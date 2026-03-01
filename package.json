@@ -4,7 +4,9 @@
   "description": "MCP server for Java application profiling via JDK utilities (jcmd, jfr, jps)",
   "type": "module",
   "main": "dist/index.js",
-  "bin": "./dist/index.js",
+  "bin": {
+    "javaperf": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
