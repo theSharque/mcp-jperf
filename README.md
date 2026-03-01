@@ -1,13 +1,13 @@
-# jperf
+# javaperf
 
-[![npm version](https://img.shields.io/npm/v/jperf.svg)](https://www.npmjs.com/package/jperf)
+[![npm version](https://img.shields.io/npm/v/javaperf.svg)](https://www.npmjs.com/package/javaperf)
 
 > MCP (Model Context Protocol) server for profiling Java applications via JDK utilities (jcmd, jfr, jps)
 
 Enables AI assistants to diagnose performance, analyze threads, and inspect JFR recordings without manual CLI usage.
 
-📦 **Install**: `npm install -g jperf` or use via npx  
-🌐 **npm**: https://www.npmjs.com/package/jperf
+📦 **Install**: `npm install -g javaperf` or use via npx  
+🌐 **npm**: https://www.npmjs.com/package/javaperf
 
 ## Requirements
 
@@ -79,9 +79,9 @@ Installs from npm registry automatically:
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -94,8 +94,8 @@ For local development with live changes:
 ```json
 {
   "mcpServers": {
-    "jperf": {
-      "command": "jperf"
+    "javaperf": {
+      "command": "javaperf"
     }
   }
 }
@@ -108,7 +108,7 @@ Requires: `cd /path/to/mcp-jperf && npm link -g`
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "node",
       "args": ["dist/index.js"],
       "cwd": "${workspaceFolder}",
@@ -129,9 +129,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -144,9 +144,9 @@ Edit `.continue/config.json`:
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -160,6 +160,10 @@ Edit `.continue/config.json`:
 | `start_profiling` | Start JFR recording with `settings=profile`. Pass `pid`, `duration` (seconds), optional `recordingName`. |
 | `stop_profiling` | Stop recording and save to file. Requires `pid` and `recordingId` from start_profiling. |
 | `analyze_threads` | Thread dump (jstack). Pass `pid`, optional `topN` (default 10) to limit threads. |
+| `heap_histogram` | Class histogram (GC.class_histogram). Top classes by instances/bytes. Pass `pid`, optional `topN` (20), `all` (include unreachable). |
+| `heap_dump` | Create .hprof heap dump for MAT/VisualVM. Pass `pid`. Saved to recordings/heap_dump.hprof. |
+| `heap_info` | Brief heap summary. Pass `pid`. |
+| `vm_info` | JVM info: uptime, version, flags. Pass `pid`. |
 | `trace_method` | Build call tree for a method from a .jfr file. Pass `filepath`, `className`, `methodName`, optional `topN`. |
 | `parse_jfr_summary` | Parse .jfr into summary: top methods, GC stats, anomalies. Pass `filepath`, optional `events`, `topN`. |
 | `profile_memory` | Memory profile: top allocators, GC, potential leaks. Pass `filepath`, optional `topN`. |

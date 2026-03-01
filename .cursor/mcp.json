@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "node",
       "args": ["dist/index.js"],
       "cwd": "${workspaceFolder}",

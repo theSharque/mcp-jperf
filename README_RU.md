@@ -1,13 +1,13 @@
-# jperf
+# javaperf
 
-[![npm version](https://img.shields.io/npm/v/jperf.svg)](https://www.npmjs.com/package/jperf)
+[![npm version](https://img.shields.io/npm/v/javaperf.svg)](https://www.npmjs.com/package/javaperf)
 
 > MCP-сервер для профилирования Java-приложений через утилиты JDK (jcmd, jfr, jps)
 
 Позволяет AI-ассистентам диагностировать производительность, анализировать потоки и просматривать JFR-записи без ручного использования CLI.
 
-📦 **Установка**: `npm install -g jperf` или через npx  
-🌐 **npm**: https://www.npmjs.com/package/jperf
+📦 **Установка**: `npm install -g javaperf` или через npx  
+🌐 **npm**: https://www.npmjs.com/package/javaperf
 
 ## Требования
 
@@ -79,9 +79,9 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -94,8 +94,8 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```json
 {
   "mcpServers": {
-    "jperf": {
-      "command": "jperf"
+    "javaperf": {
+      "command": "javaperf"
     }
   }
 }
@@ -108,7 +108,7 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "node",
       "args": ["dist/index.js"],
       "cwd": "${workspaceFolder}",
@@ -129,9 +129,9 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -144,9 +144,9 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ```json
 {
   "mcpServers": {
-    "jperf": {
+    "javaperf": {
       "command": "npx",
-      "args": ["-y", "jperf"]
+      "args": ["-y", "javaperf"]
     }
   }
 }
@@ -160,6 +160,10 @@ npx @modelcontextprotocol/inspector node dist/index.js
 | `start_profiling` | Запуск JFR-записи с `settings=profile`. Параметры: `pid`, `duration` (сек), опционально `recordingName`. |
 | `stop_profiling` | Остановка записи и сохранение в файл. Требует `pid` и `recordingId` из start_profiling. |
 | `analyze_threads` | Дамп потоков (jstack). Параметры: `pid`, опционально `topN` (по умолчанию 10). |
+| `heap_histogram` | Гистограмма классов (GC.class_histogram). Топ классов по количеству объектов и памяти. Параметры: `pid`, опционально `topN` (20), `all`. |
+| `heap_dump` | Создание .hprof дампа кучи для MAT/VisualVM. Параметр: `pid`. Сохраняется в recordings/heap_dump.hprof. |
+| `heap_info` | Краткая сводка по куче. Параметр: `pid`. |
+| `vm_info` | Информация о JVM: uptime, version, flags. Параметр: `pid`. |
 | `trace_method` | Построение дерева вызовов метода из .jfr. Параметры: `filepath`, `className`, `methodName`, опционально `topN`. |
 | `parse_jfr_summary` | Разбор .jfr в сводку: топ методов, GC, аномалии. Параметры: `filepath`, опционально `events`, `topN`. |
 | `profile_memory` | Профиль по памяти: топ аллокаторов, GC, утечки. Параметры: `filepath`, опционально `topN`. |

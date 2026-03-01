@@ -11,9 +11,13 @@ import { parseJfrSummary } from "./tools/parse_jfr.js";
 import { profileMemory } from "./tools/profile_memory.js";
 import { profileTime } from "./tools/profile_time.js";
 import { profileFrequency } from "./tools/profile_frequency.js";
+import { heapHistogram } from "./tools/heap_histogram.js";
+import { heapDump } from "./tools/heap_dump.js";
+import { heapInfo } from "./tools/heap_info.js";
+import { vmInfo } from "./tools/vm_info.js";
 
 const server = new McpServer({
-  name: "jperf",
+  name: "javaperf",
   version: "1.0.0",
 });
 
@@ -101,6 +105,87 @@ server.registerTool(
   },
   async (args) => ({
     content: [{ type: "text", text: await analyzeThreads(args) }],
+  })
+);
+
+server.registerTool(
+  "heap_histogram",
+  {
+    description: "Class histogram of live objects in the heap (jcmd GC.class_histogram). Returns top classes by memory usage — useful for memory leak investigation. Classes with unusually high instance count or bytes may indicate a leak.",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+      topN: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .default(20)
+        .describe("Maximum number of top classes to return. Default: 20."),
+      all: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include unreachable objects (full GC). Use with caution — can cause pause."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await heapHistogram(args) }],
+  })
+);
+
+server.registerTool(
+  "heap_dump",
+  {
+    description: "Creates a heap dump (.hprof file) for offline analysis in Eclipse MAT, VisualVM, or JProfiler. Saved to recordings/heap_dump.hprof (overwritten each call). Warning: file can be large (hundreds of MB to GB).",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await heapDump(args) }],
+  })
+);
+
+server.registerTool(
+  "heap_info",
+  {
+    description: "Brief heap usage summary: capacities, used, committed regions. Quick snapshot without full dump.",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await heapInfo(args) }],
+  })
+);
+
+server.registerTool(
+  "vm_info",
+  {
+    description: "JVM information: uptime, version, and flags. Useful for environment verification.",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await vmInfo(args) }],
   })
 );
 
