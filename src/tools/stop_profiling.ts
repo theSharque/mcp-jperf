@@ -1,8 +1,8 @@
-import { z } from "zod";
 import { existsSync, mkdirSync } from "node:fs";
 import { statSync } from "node:fs";
-import { join } from "node:path";
+import { z } from "zod";
 import { runJcmd } from "../utils/jdk.js";
+import { NEW_PROFILE_PATH, RECORDINGS_DIR } from "../utils/paths.js";
 
 export const stopProfilingSchema = z.object({
   pid: z.number().int().positive(),
@@ -13,26 +13,30 @@ export type StopProfilingInput = z.infer<typeof stopProfilingSchema>;
 
 export async function stopProfiling(input: StopProfilingInput): Promise<string> {
   const { pid, recordingId } = input;
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const dir = join(process.cwd(), "recordings");
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+
+  if (!existsSync(RECORDINGS_DIR)) {
+    mkdirSync(RECORDINGS_DIR, { recursive: true });
   }
-  const filepath = join(dir, `${pid}_${timestamp}.jfr`);
 
-  runJcmd(pid, `JFR.stop`, [`name=${recordingId}`, `filename=${filepath}`]);
+  runJcmd(pid, "JFR.stop", [`name=${recordingId}`, `filename=${NEW_PROFILE_PATH}`]);
 
-  if (!existsSync(filepath)) {
+  if (!existsSync(NEW_PROFILE_PATH)) {
     return JSON.stringify({
       status: "error",
       message: "Recording stopped but file was not found. Check JFR output.",
-    }, null, 2);
+    });
   }
 
-  const stats = statSync(filepath);
-  return JSON.stringify({
-    filepath,
-    fileSize: stats.size,
-    status: "saved",
-  }, null, 2);
+  const stats = statSync(NEW_PROFILE_PATH);
+  return JSON.stringify(
+    {
+      filepath: NEW_PROFILE_PATH,
+      fileSize: stats.size,
+      status: "saved",
+      oldProfilePath: "recordings/old_profile.jfr (previous recording)",
+      hint: "Use recordings/new_profile.jfr for current, recordings/old_profile.jfr for previous (before/after comparison)",
+    },
+    null,
+    2
+  );
 }

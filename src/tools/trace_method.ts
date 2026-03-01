@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const traceMethodSchema = z.object({
   filepath: z.string(),
@@ -12,13 +14,9 @@ export const traceMethodSchema = z.object({
 
 export type TraceMethodInput = z.infer<typeof traceMethodSchema>;
 
-interface JfrEvent {
-  type?: string;
-  stackTrace?: { frames?: Array<{ type?: string; method?: { type?: string; name?: string }; lineNumber?: number }> };
-}
-
 export async function traceMethod(input: TraceMethodInput): Promise<string> {
-  const { filepath, className, methodName, topN } = input;
+  const { className, methodName, topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
     return JSON.stringify({ error: `File not found: ${filepath}` });
@@ -29,29 +27,28 @@ export async function traceMethod(input: TraceMethodInput): Promise<string> {
 
   const output = await runJfr(["print", "--json", "--events", eventsArg, filepath]);
 
-  let eventsList: JfrEvent[];
+  let eventsList: unknown[];
   try {
     const parsed = JSON.parse(output);
-    eventsList = Array.isArray(parsed) ? parsed : parsed.events ?? [];
+    eventsList = getEvents(parsed);
   } catch {
     return JSON.stringify({ error: "Failed to parse JFR JSON output" });
   }
 
   const targetMethod = `${className}.${methodName}`;
   const matchingPaths: Map<string, number> = new Map();
+  const classNorm = className.replace(/\//g, ".");
 
   for (const ev of eventsList) {
-    const frames = ev.stackTrace?.frames ?? [];
+    const frames = getStackTrace(ev)?.frames ?? [];
     const pathParts: string[] = [];
     let found = false;
 
     for (const f of frames) {
-      const mName = f.method?.name ?? "";
-      const typeName = f.method?.type ?? f.type ?? "";
-      const fullMethod = typeName ? `${typeName}.${mName}` : mName;
-      pathParts.push(fullMethod);
+      const fullMethod = getMethodKey(f);
+      if (fullMethod) pathParts.push(fullMethod);
 
-      if (fullMethod.includes(className) && fullMethod.includes(methodName)) {
+      if (fullMethod.includes(classNorm) && fullMethod.includes(methodName)) {
         found = true;
       }
     }

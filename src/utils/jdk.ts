@@ -1,4 +1,6 @@
 import { execSync, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 export interface JavaProcess {
   pid: number;
@@ -6,18 +8,59 @@ export interface JavaProcess {
   args: string;
 }
 
+let _jdkBin: string | null = null;
+
+/** Resolve path to JDK bin (jps, jcmd, jfr). Uses JAVA_HOME or derives from java. */
+function getJdkBin(): string {
+  if (_jdkBin) return _jdkBin;
+
+  const javaHome = process.env.JAVA_HOME;
+  if (javaHome) {
+    const bin = join(javaHome, "bin");
+    if (existsSync(join(bin, "jps"))) {
+      _jdkBin = bin;
+      return bin;
+    }
+  }
+
+  try {
+    const javaPath = execSync("which java 2>/dev/null || command -v java", {
+      encoding: "utf-8",
+    }).trim();
+    if (javaPath) {
+      const bin = join(javaPath, "..");
+      if (existsSync(join(bin, "jps"))) {
+        _jdkBin = bin;
+        return bin;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  _jdkBin = "";
+  return "";
+}
+
+function jdkCmd(name: string): string {
+  const bin = getJdkBin();
+  return bin ? join(bin, name) : name;
+}
+
 /**
  * Run jps -l -m and parse output into structured process list.
  */
 export function runJps(): JavaProcess[] {
   try {
-    const output = execSync("jps -l -m", { encoding: "utf-8" });
+    const jpsPath = jdkCmd("jps");
+    const output = execSync(`"${jpsPath}" -l -m`, { encoding: "utf-8" });
     return parseJpsOutput(output);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`jps failed: ${message}. Ensure JDK is installed and in PATH.`, {
-      cause: err,
-    });
+    const hint = process.env.JAVA_HOME
+      ? "Check that JAVA_HOME points to a valid JDK (not JRE) with bin/jps."
+      : "Set JAVA_HOME to JDK root, or add JDK bin to PATH.";
+    throw new Error(`jps failed: ${message}. ${hint}`, { cause: err });
   }
 }
 
@@ -55,8 +98,9 @@ function parseJpsOutput(output: string): JavaProcess[] {
  */
 export function runJcmd(pid: number, command: string, options?: string[]): string {
   try {
+    const jcmdPath = jdkCmd("jcmd");
     const args = [String(pid), command, ...(options ?? [])];
-    const output = execSync(`jcmd ${args.join(" ")}`, { encoding: "utf-8" });
+    const output = execSync(`"${jcmdPath}" ${args.join(" ")}`, { encoding: "utf-8" });
     return output;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -79,7 +123,8 @@ export function runJcmd(pid: number, command: string, options?: string[]): strin
  */
 export function runJfr(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn("jfr", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const jfrPath = jdkCmd("jfr");
+    const child = spawn(jfrPath, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
 
@@ -95,9 +140,10 @@ export function runJfr(args: string[]): Promise<string> {
     });
 
     child.on("error", (err) => {
-      reject(new Error(`jfr not found: ${err.message}. Ensure JDK with JFR is in PATH.`, {
-        cause: err,
-      }));
+      const hint = process.env.JAVA_HOME
+        ? "Check that JAVA_HOME points to JDK (jfr is in JDK 9+)."
+        : "Set JAVA_HOME or add JDK bin to PATH.";
+      reject(new Error(`jfr not found: ${err.message}. ${hint}`, { cause: err }));
     });
   });
 }

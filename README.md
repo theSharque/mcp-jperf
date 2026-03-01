@@ -13,7 +13,8 @@ Enables AI assistants to diagnose performance, analyze threads, and inspect JFR 
 
 - **Node.js** v18+
 - **JDK** 8u262+ or 11+ with JFR support
-- JDK tools (`jps`, `jcmd`, `jfr`) in `PATH`
+
+JDK tools (`jps`, `jcmd`, `jfr`) are auto-detected via `JAVA_HOME` or `which java`. If not found, set `JAVA_HOME` to your JDK root.
 
 ## Quick Start
 
@@ -109,12 +110,17 @@ Requires: `cd /path/to/mcp-jperf && npm link -g`
   "mcpServers": {
     "jperf": {
       "command": "node",
-      "args": ["/path/to/mcp-jperf/dist/index.js"],
-      "cwd": "/path/to/mcp-jperf"
+      "args": ["dist/index.js"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "JAVA_HOME": "/path/to/your/jdk"
+      }
     }
   }
 }
 ```
+
+If `list_java_processes` fails with "jps not found", the MCP server may not inherit your shell's `JAVA_HOME`. Add the `env` block above with your JDK root path (e.g. `/usr/lib/jvm/java-17` or `~/.sdkman/candidates/java/current`).
 
 ### Claude Desktop
 

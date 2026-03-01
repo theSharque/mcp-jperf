@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const profileFrequencySchema = z.object({
   filepath: z.string(),
@@ -10,7 +12,8 @@ export const profileFrequencySchema = z.object({
 export type ProfileFrequencyInput = z.infer<typeof profileFrequencySchema>;
 
 export async function profileFrequency(input: ProfileFrequencyInput): Promise<string> {
-  const { filepath, topN } = input;
+  const { topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
     return JSON.stringify({ error: `File not found: ${filepath}` });
@@ -22,15 +25,13 @@ export async function profileFrequency(input: ProfileFrequencyInput): Promise<st
 
   try {
     const parsed = JSON.parse(output);
-    const eventsList = Array.isArray(parsed) ? parsed : parsed.events ?? [];
+    const eventsList = getEvents(parsed);
 
     for (const ev of eventsList) {
-      const frames = ev.stackTrace?.frames ?? [];
+      const frames = getStackTrace(ev)?.frames ?? [];
       const leaf = frames[0];
-      if (leaf?.method) {
-        const t = leaf.method.type ?? "";
-        const n = leaf.method.name ?? "";
-        const key = t ? `${t}.${n}` : n;
+      if (leaf) {
+        const key = getMethodKey(leaf);
         if (key) leafCount.set(key, (leafCount.get(key) ?? 0) + 1);
       }
     }

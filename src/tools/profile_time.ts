@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const profileTimeSchema = z.object({
   filepath: z.string(),
@@ -10,7 +12,8 @@ export const profileTimeSchema = z.object({
 export type ProfileTimeInput = z.infer<typeof profileTimeSchema>;
 
 export async function profileTime(input: ProfileTimeInput): Promise<string> {
-  const { filepath, topN } = input;
+  const { topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
     return JSON.stringify({ error: `File not found: ${filepath}` });
@@ -22,14 +25,12 @@ export async function profileTime(input: ProfileTimeInput): Promise<string> {
 
   try {
     const parsed = JSON.parse(output);
-    const eventsList = Array.isArray(parsed) ? parsed : parsed.events ?? [];
+    const eventsList = getEvents(parsed);
 
     for (const ev of eventsList) {
-      const frames = ev.stackTrace?.frames ?? [];
+      const frames = getStackTrace(ev)?.frames ?? [];
       for (const f of frames) {
-        const t = f.method?.type ?? "";
-        const n = f.method?.name ?? "";
-        const key = t ? `${t}.${n}` : n;
+        const key = getMethodKey(f);
         if (key) methodSamples.set(key, (methodSamples.get(key) ?? 0) + 1);
       }
     }

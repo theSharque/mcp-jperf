@@ -22,6 +22,5 @@ yarn-error.log*
 .env
 .env.local
 
-# JFR recordings
+# JFR recordings (old_profile.jfr, new_profile.jfr)
 recordings/
-*.jfr

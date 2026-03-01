@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const parseJfrSummarySchema = z.object({
   filepath: z.string(),
@@ -10,13 +12,9 @@ export const parseJfrSummarySchema = z.object({
 
 export type ParseJfrSummaryInput = z.infer<typeof parseJfrSummarySchema>;
 
-interface JfrEvent {
-  type?: string;
-  stackTrace?: { frames?: Array<{ method?: { type?: string; name?: string } }> };
-}
-
 export async function parseJfrSummary(input: ParseJfrSummaryInput): Promise<string> {
-  const { filepath, topN } = input;
+  const { topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
     return JSON.stringify({ error: `File not found: ${filepath}` });
@@ -41,16 +39,16 @@ export async function parseJfrSummary(input: ParseJfrSummaryInput): Promise<stri
 
   try {
     const parsed = JSON.parse(jsonOut);
-    const eventsList: JfrEvent[] = Array.isArray(parsed) ? parsed : parsed.events ?? [];
+    const eventsList = getEvents(parsed);
 
     for (const ev of eventsList) {
-      if (ev.type === "jdk.GarbageCollection") gcCount++;
+      const typ = getEventType(ev);
+      if (typ === "jdk.GarbageCollection") gcCount++;
 
-      if (ev.type === "jdk.ExecutionSample" && ev.stackTrace?.frames) {
-        for (const f of ev.stackTrace.frames) {
-          const t = f.method?.type ?? "";
-          const n = f.method?.name ?? "";
-          const key = t ? `${t}.${n}` : n;
+      if (typ === "jdk.ExecutionSample") {
+        const frames = getStackTrace(ev)?.frames ?? [];
+        for (const f of frames) {
+          const key = getMethodKey(f);
           if (key) methodCount.set(key, (methodCount.get(key) ?? 0) + 1);
         }
       }

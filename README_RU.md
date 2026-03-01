@@ -13,7 +13,8 @@
 
 - **Node.js** v18+
 - **JDK** 8u262+ или 11+ с поддержкой JFR
-- Утилиты JDK (`jps`, `jcmd`, `jfr`) в `PATH`
+
+Утилиты JDK (`jps`, `jcmd`, `jfr`) находятся автоматически через `JAVA_HOME` или `which java`. Если не найдены — задайте `JAVA_HOME` на корень JDK.
 
 ## Быстрый старт
 
@@ -109,12 +110,17 @@ npx @modelcontextprotocol/inspector node dist/index.js
   "mcpServers": {
     "jperf": {
       "command": "node",
-      "args": ["/путь/к/mcp-jperf/dist/index.js"],
-      "cwd": "/путь/к/mcp-jperf"
+      "args": ["dist/index.js"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "JAVA_HOME": "/путь/к/вашему/jdk"
+      }
     }
   }
 }
 ```
+
+Если `list_java_processes` выдаёт "jps not found", MCP-сервер может не наследовать `JAVA_HOME` из shell. Добавьте блок `env` с путём к корню JDK (например `/usr/lib/jvm/java-17` или `~/.sdkman/candidates/java/current`).
 
 ### Claude Desktop
 

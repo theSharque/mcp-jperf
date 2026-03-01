@@ -3,7 +3,10 @@
     "jperf": {
       "command": "node",
       "args": ["dist/index.js"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "JAVA_HOME": "/home/sharque/.sdkman/candidates/java/current"
+      }
     }
   }
 }

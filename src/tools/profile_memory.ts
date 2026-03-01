@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const profileMemorySchema = z.object({
   filepath: z.string(),
@@ -19,7 +21,8 @@ const MEMORY_EVENTS = [
 ].join(",");
 
 export async function profileMemory(input: ProfileMemoryInput): Promise<string> {
-  const { filepath, topN } = input;
+  const { topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
     return JSON.stringify({ error: `File not found: ${filepath}` });
@@ -33,27 +36,31 @@ export async function profileMemory(input: ProfileMemoryInput): Promise<string> 
 
   try {
     const parsed = JSON.parse(output);
-    const eventsList = Array.isArray(parsed) ? parsed : parsed.events ?? [];
+    const eventsList = getEvents(parsed);
 
     for (const ev of eventsList) {
-      if (ev.type === "jdk.GarbageCollection") gcCount++;
+      const typ = getEventType(ev);
+      if (typ === "jdk.GarbageCollection") gcCount++;
+
+      const stackTrace = getStackTrace(ev);
+      const frames = stackTrace?.frames;
 
       if (
-        (ev.type === "jdk.ObjectAllocationInNewTLAB" ||
-          ev.type === "jdk.ObjectAllocationOutsideTLAB" ||
-          ev.type === "jdk.ObjectAllocationSample") &&
-        ev.stackTrace?.frames
+        (typ === "jdk.ObjectAllocationInNewTLAB" ||
+          typ === "jdk.ObjectAllocationOutsideTLAB" ||
+          typ === "jdk.ObjectAllocationSample") &&
+        frames?.length
       ) {
-        const top = ev.stackTrace.frames[0];
-        const key = top?.method ? `${top.method.type ?? ""}.${top.method.name ?? ""}` : "unknown";
+        const top = frames[0];
+        const key = getMethodKey(top);
         if (key && key !== "unknown")
           allocatorCount.set(key, (allocatorCount.get(key) ?? 0) + 1);
       }
 
-      if (ev.type === "jdk.OldObjectSample" && ev.stackTrace?.frames) {
-        const top = ev.stackTrace.frames[0];
-        if (top?.method)
-          potentialLeaks.push(`${top.method.type ?? ""}.${top.method.name ?? ""}`);
+      if (typ === "jdk.OldObjectSample" && frames?.length) {
+        const top = frames[0];
+        const key = getMethodKey(top);
+        if (key) potentialLeaks.push(key);
       }
     }
   } catch {
