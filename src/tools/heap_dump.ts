@@ -19,7 +19,7 @@ export async function heapDump(input: HeapDumpInput): Promise<string> {
     mkdirSync(RECORDINGS_DIR, { recursive: true });
   }
 
-  runJcmd(pid, "GC.heap_dump", [`filename=${HEAP_DUMP_PATH}`]);
+  runJcmd(pid, "GC.heap_dump", [HEAP_DUMP_PATH]);
 
   if (!existsSync(HEAP_DUMP_PATH)) {
     return JSON.stringify({
