@@ -9,6 +9,27 @@ Enables AI assistants to diagnose performance, analyze threads, and inspect JFR 
 📦 **Install**: `npm install -g javaperf` or use via npx  
 🌐 **npm**: https://www.npmjs.com/package/javaperf
 
+## How to connect to Claude Desktop / IDE
+
+Add the server to your MCP config. Example for **claude_desktop_config.json**:
+
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
+**Linux:** `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "javaperf": {
+      "command": "npx",
+      "args": ["-y", "javaperf"]
+    }
+  }
+}
+```
+
+For **Cursor IDE**: Settings → Features → Model Context Protocol → Edit Config, then add the same block inside `mcpServers`. See the [Integration](#integration) section for more options (local dev, custom `JAVA_HOME`, etc.).
+
 ## Requirements
 
 - **Node.js** v18+

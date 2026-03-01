@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.theSharque/javaperf",
+  "description": "Java profiling MCP via jcmd/jfr/jps. Diagnose performance, analyze threads, inspect JFR recordings.",
+  "title": "javaperf",
+  "repository": {
+    "url": "https://github.com/theSharque/mcp-jperf",
+    "source": "github"
+  },
+  "version": "1.0.4",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "javaperf",
+      "version": "1.0.4",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
