@@ -1,0 +1,29 @@
+{
+  "name": "jperf",
+  "version": "1.0.0",
+  "description": "MCP server for Java application profiling via JDK utilities (jcmd, jfr, jps)",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.0.0",
+    "eslint": "^10.0.2",
+    "globals": "^17.4.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.56.1"
+  }
+}
