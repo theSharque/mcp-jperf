@@ -1,6 +1,10 @@
 {
   "name": "javaperf",
   "version": "1.0.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/theSharque/mcp-jperf.git"
+  },
   "description": "MCP server for Java application profiling via JDK utilities (jcmd, jfr, jps)",
   "type": "module",
   "main": "dist/index.js",
