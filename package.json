@@ -1,6 +1,6 @@
 {
   "name": "javaperf",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for Java application profiling via JDK utilities (jcmd, jfr, jps)",
   "type": "module",
   "main": "dist/index.js",
