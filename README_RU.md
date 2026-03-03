@@ -6,15 +6,15 @@
 
 Позволяет AI-ассистентам диагностировать производительность, анализировать потоки и просматривать JFR-записи без ручного использования CLI.
 
-📦 **Установка**: `npm install -g javaperf` или через npx  
+📦 **Установка**: `npm install -g javaperf` или через npx
 🌐 **npm**: https://www.npmjs.com/package/javaperf
 
 ## Как подключить к Claude Desktop / IDE
 
 Добавьте сервер в конфиг MCP. Пример для **claude_desktop_config.json**:
 
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`  
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 **Linux:** `~/.config/Claude/claude_desktop_config.json`
 
 ```json
