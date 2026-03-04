@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
 import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { formatError } from "../utils/errors.js";
 
 export const traceMethodSchema = z.object({
   filepath: z.string(),
@@ -19,7 +20,7 @@ export async function traceMethod(input: TraceMethodInput): Promise<string> {
   const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
-    return JSON.stringify({ error: `File not found: ${filepath}` });
+    return formatError(`File not found: ${filepath}`, "FILE_NOT_FOUND", "Create a recording with start_profiling and stop_profiling.");
   }
 
   const events = input.events ?? ["jdk.ExecutionSample"];
@@ -32,7 +33,7 @@ export async function traceMethod(input: TraceMethodInput): Promise<string> {
     const parsed = JSON.parse(output);
     eventsList = getEvents(parsed);
   } catch {
-    return JSON.stringify({ error: "Failed to parse JFR JSON output" });
+    return formatError("Failed to parse JFR JSON output.", "PARSE_ERROR", "Ensure the .jfr file is valid and was created with settings=profile.");
   }
 
   const targetMethod = `${className}.${methodName}`;

@@ -10,7 +10,6 @@ export interface JavaProcess {
 
 let _jdkBin: string | null = null;
 
-/** Resolve path to JDK bin (jps, jcmd, jfr). Uses JAVA_HOME or derives from java. */
 function getJdkBin(): string {
   if (_jdkBin) return _jdkBin;
 
@@ -35,7 +34,7 @@ function getJdkBin(): string {
       }
     }
   } catch {
-    // ignore
+    void 0;
   }
 
   _jdkBin = "";
@@ -47,9 +46,6 @@ function jdkCmd(name: string): string {
   return bin ? join(bin, name) : name;
 }
 
-/**
- * Run jps -l -m and parse output into structured process list.
- */
 export function runJps(): JavaProcess[] {
   try {
     const jpsPath = jdkCmd("jps");
@@ -93,9 +89,6 @@ function parseJpsOutput(output: string): JavaProcess[] {
   return result;
 }
 
-/**
- * Run jcmd with given pid and command.
- */
 export function runJcmd(pid: number, command: string, options?: string[]): string {
   try {
     const jcmdPath = jdkCmd("jcmd");
@@ -118,9 +111,6 @@ export function runJcmd(pid: number, command: string, options?: string[]): strin
   }
 }
 
-/**
- * Run jfr command (print, summary, etc.) and return stdout.
- */
 export function runJfr(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const jfrPath = jdkCmd("jfr");

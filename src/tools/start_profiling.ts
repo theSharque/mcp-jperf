@@ -10,6 +10,8 @@ import {
 export const startProfilingSchema = z.object({
   pid: z.number().int().positive(),
   duration: z.number().int().positive(),
+  memorysize: z.string().optional(),
+  stackdepth: z.number().int().min(32).max(2048).optional().default(128),
 });
 
 export type StartProfilingInput = z.infer<typeof startProfilingSchema>;
@@ -29,12 +31,13 @@ function rotateProfiles(): void {
 }
 
 export async function startProfiling(input: StartProfilingInput): Promise<string> {
-  const { pid, duration } = input;
+  const { pid, duration, memorysize, stackdepth } = input;
 
   rotateProfiles();
 
-  const cmd = `JFR.start duration=${duration}s settings=profile`;
-  const output = runJcmd(pid, cmd);
+  const opts: string[] = [`duration=${duration}s`, `settings=profile`, `stackdepth=${stackdepth}`];
+  if (memorysize) opts.push(`memorysize=${memorysize}`);
+  const output = runJcmd(pid, "JFR.start", opts);
 
   const match = output.match(/Started recording (\d+)\./);
   const recordingId = match ? match[1] : "1";

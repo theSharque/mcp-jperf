@@ -15,10 +15,12 @@ import { heapHistogram } from "./tools/heap_histogram.js";
 import { heapDump } from "./tools/heap_dump.js";
 import { heapInfo } from "./tools/heap_info.js";
 import { vmInfo } from "./tools/vm_info.js";
+import { listJfrRecordings } from "./tools/list_jfr_recordings.js";
+import { checkDeadlock } from "./tools/check_deadlock.js";
 
 const server = new McpServer({
   name: "javaperf",
-  version: "1.0.0",
+  version: "1.2.0",
 });
 
 server.registerTool(
@@ -44,7 +46,7 @@ server.registerTool(
 server.registerTool(
   "start_profiling",
   {
-    description: "Starts a Java Flight Recorder (JFR) recording on the specified Java process. Uses settings=profile for a full dump. Before starting, rotates files: deletes old_profile.jfr, renames new_profile.jfr → old_profile.jfr. This keeps only 2 files for before/after comparison. Call stop_profiling after duration to save to recordings/new_profile.jfr.",
+    description: "Starts a Java Flight Recorder (JFR) recording on the specified Java process. Uses settings=profile for a full dump. Before starting, rotates files: deletes old_profile.jfr, renames new_profile.jfr → old_profile.jfr. Call list_jfr_recordings to see active recordings; call stop_profiling after duration to save to recordings/new_profile.jfr.",
     inputSchema: z.object({
       pid: z
         .number()
@@ -56,6 +58,18 @@ server.registerTool(
         .int()
         .positive()
         .describe("Recording duration in seconds. Typical values: 10–60 for quick checks, 300+ for load testing."),
+      memorysize: z
+        .string()
+        .optional()
+        .describe("JFR buffer size, e.g. '20M'. Default is 10M. Increase for long or busy recordings."),
+      stackdepth: z
+        .number()
+        .int()
+        .min(32)
+        .max(2048)
+        .optional()
+        .default(128)
+        .describe("Stack trace depth for JFR events. Default 128. Increase if you see truncated stacks."),
     }),
   },
   async (args) => ({
@@ -80,6 +94,40 @@ server.registerTool(
   },
   async (args) => ({
     content: [{ type: "text", text: await stopProfiling(args) }],
+  })
+);
+
+server.registerTool(
+  "check_deadlock",
+  {
+    description: "Checks for Java-level deadlocks in the specified process. Parses jcmd Thread.print output and returns structured JSON: which threads are involved, what locks they hold/wait for, and the deadlock cycle. Use for automated analysis and reports.",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await checkDeadlock(args) }],
+  })
+);
+
+server.registerTool(
+  "list_jfr_recordings",
+  {
+    description: "Lists active and recent JFR recordings for a Java process (jcmd JFR.check). Returns recording id, duration, state (running/stopped), and filename. Use before stop_profiling to get the correct recordingId.",
+    inputSchema: z.object({
+      pid: z
+        .number()
+        .int()
+        .positive()
+        .describe("Process ID of the Java application. Get this from list_java_processes."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await listJfrRecordings(args) }],
   })
 );
 
@@ -130,7 +178,7 @@ server.registerTool(
         .boolean()
         .optional()
         .default(false)
-        .describe("Include unreachable objects (full GC). Use with caution — can cause pause."),
+        .describe("Include unreachable objects. Triggers full GC and may cause application pause."),
     }),
   },
   async (args) => ({
@@ -196,7 +244,9 @@ server.registerTool(
     inputSchema: z.object({
       filepath: z
         .string()
-        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current, default) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
       className: z
         .string()
         .describe("Fully qualified class name (e.g. com.example.MyService) or a substring to match. Used to filter stack frames."),
@@ -229,7 +279,9 @@ server.registerTool(
     inputSchema: z.object({
       filepath: z
         .string()
-        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current, default) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
       events: z
         .array(z.string())
         .optional()
@@ -256,7 +308,9 @@ server.registerTool(
     inputSchema: z.object({
       filepath: z
         .string()
-        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current, default) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
       topN: z
         .number()
         .int()
@@ -279,7 +333,9 @@ server.registerTool(
     inputSchema: z.object({
       filepath: z
         .string()
-        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current, default) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
       topN: z
         .number()
         .int()
@@ -302,7 +358,9 @@ server.registerTool(
     inputSchema: z.object({
       filepath: z
         .string()
-        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr file. Shortcuts: 'new_profile' (current, default) or 'old_profile' (previous). Or full path e.g. recordings/new_profile.jfr."),
       topN: z
         .number()
         .int()

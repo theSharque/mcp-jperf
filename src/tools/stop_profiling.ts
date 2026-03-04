@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { z } from "zod";
 import { runJcmd } from "../utils/jdk.js";
 import { NEW_PROFILE_PATH, RECORDINGS_DIR } from "../utils/paths.js";
+import { formatError } from "../utils/errors.js";
 
 export const stopProfilingSchema = z.object({
   pid: z.number().int().positive(),
@@ -21,10 +21,11 @@ export async function stopProfiling(input: StopProfilingInput): Promise<string> 
   runJcmd(pid, "JFR.stop", [`name=${recordingId}`, `filename=${NEW_PROFILE_PATH}`]);
 
   if (!existsSync(NEW_PROFILE_PATH)) {
-    return JSON.stringify({
-      status: "error",
-      message: "Recording stopped but file was not found. Check JFR output.",
-    });
+    return formatError(
+      "Recording stopped but file was not found.",
+      "JFR_RECORDING_FAILED",
+      "Check JFR output. Use list_jfr_recordings to verify the recording exists."
+    );
   }
 
   const stats = statSync(NEW_PROFILE_PATH);

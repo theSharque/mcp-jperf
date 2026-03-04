@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
 import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { formatError } from "../utils/errors.js";
 
 export const profileTimeSchema = z.object({
   filepath: z.string(),
@@ -16,7 +17,7 @@ export async function profileTime(input: ProfileTimeInput): Promise<string> {
   const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
-    return JSON.stringify({ error: `File not found: ${filepath}` });
+    return formatError(`File not found: ${filepath}`, "FILE_NOT_FOUND", "Create a recording with start_profiling and stop_profiling.");
   }
 
   const output = await runJfr(["print", "--json", "--events", "jdk.ExecutionSample", filepath]);
@@ -35,7 +36,7 @@ export async function profileTime(input: ProfileTimeInput): Promise<string> {
       }
     }
   } catch {
-    return JSON.stringify({ error: "Failed to parse JFR ExecutionSample output." });
+    return formatError("Failed to parse JFR ExecutionSample output.", "PARSE_ERROR", "Ensure the .jfr file is valid and was created with settings=profile.");
   }
 
   const top = [...methodSamples.entries()]

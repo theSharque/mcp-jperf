@@ -50,7 +50,7 @@
 
 1. Клонируйте репозиторий:
 ```bash
-git clone <repo-url>
+git clone https://github.com/theSharque/mcp-jperf.git
 cd mcp-jperf
 ```
 
@@ -178,26 +178,29 @@ npx @modelcontextprotocol/inspector node dist/index.js
 | Инструмент | Описание |
 |------------|----------|
 | `list_java_processes` | Список Java-процессов (pid, mainClass, args). Параметр `topN` (по умолчанию 10) ограничивает вывод. |
-| `start_profiling` | Запуск JFR-записи с `settings=profile`. Параметры: `pid`, `duration` (сек), опционально `recordingName`. |
-| `stop_profiling` | Остановка записи и сохранение в файл. Требует `pid` и `recordingId` из start_profiling. |
-| `analyze_threads` | Дамп потоков (jstack). Параметры: `pid`, опционально `topN` (по умолчанию 10). |
-| `heap_histogram` | Гистограмма классов (GC.class_histogram). Топ классов по количеству объектов и памяти. Параметры: `pid`, опционально `topN` (20), `all`. |
+| `start_profiling` | Запуск JFR-записи с `settings=profile`. Параметры: `pid`, `duration` (сек). Опционально: `memorysize` (напр. "20M"), `stackdepth` (по умолчанию 128). |
+| `list_jfr_recordings` | Список активных JFR-записей процесса. Использовать перед `stop_profiling` для получения `recordingId`. |
+| `stop_profiling` | Остановка записи и сохранение в recordings/new_profile.jfr. Требует `pid` и `recordingId`. |
+| `check_deadlock` | Проверка Java-level deadlock. Возвращает JSON с потоками, блокировками и циклом. |
+| `analyze_threads` | Дамп потоков (jstack) со сводкой по deadlock. Параметры: `pid`, опционально `topN` (по умолчанию 10). |
+| `heap_histogram` | Гистограмма классов (GC.class_histogram). Параметры: `pid`, опционально `topN` (20), `all` (вызывает full GC — может приостановить приложение). |
 | `heap_dump` | Создание .hprof дампа кучи для MAT/VisualVM. Параметр: `pid`. Сохраняется в recordings/heap_dump.hprof. |
 | `heap_info` | Краткая сводка по куче. Параметр: `pid`. |
 | `vm_info` | Информация о JVM: uptime, version, flags. Параметр: `pid`. |
-| `trace_method` | Построение дерева вызовов метода из .jfr. Параметры: `filepath`, `className`, `methodName`, опционально `topN`. |
-| `parse_jfr_summary` | Разбор .jfr в сводку: топ методов, GC, аномалии. Параметры: `filepath`, опционально `events`, `topN`. |
-| `profile_memory` | Профиль по памяти: топ аллокаторов, GC, утечки. Параметры: `filepath`, опционально `topN`. |
-| `profile_time` | Профиль по времени (узкие места CPU). Параметры: `filepath`, опционально `topN`. |
-| `profile_frequency` | Профиль по частоте вызовов. Параметры: `filepath`, опционально `topN`. |
+| `trace_method` | Построение дерева вызовов метода из .jfr. Параметры: `className`, `methodName`. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
+| `parse_jfr_summary` | Разбор .jfr в сводку: топ методов, GC, аномалии. Опционально: `filepath` (по умолчанию new_profile), `events`, `topN`. |
+| `profile_memory` | Профиль по памяти: топ аллокаторов, GC, утечки. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
+| `profile_time` | Профиль по времени (узкие места CPU). Опционально: `filepath` (по умолчанию new_profile), `topN`. |
+| `profile_frequency` | Профиль по частоте вызовов. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
 
 ## Пример работы
 
 1. **Список процессов** → `list_java_processes`
 2. **Старт записи** → `start_profiling` с `pid` и `duration` (например 60)
 3. Подождать `duration` секунд
-4. **Остановка и сохранение** → `stop_profiling` с `pid` и `recordingId`
-5. **Анализ** → Использовать `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency` или `trace_method` с путём к сохранённому .jfr
+4. **Проверить записи** (опционально) → `list_jfr_recordings` для получения `recordingId`
+5. **Остановка и сохранение** → `stop_profiling` с `pid` и `recordingId`
+6. **Анализ** → Использовать `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency` или `trace_method` (filepath по умолчанию — new_profile)
 
 ## Ограничения
 

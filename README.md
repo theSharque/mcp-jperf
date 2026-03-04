@@ -50,7 +50,7 @@ JDK tools (`jps`, `jcmd`, `jfr`) are auto-detected via `JAVA_HOME` or `which jav
 
 1. Clone the repository:
 ```bash
-git clone <repo-url>
+git clone https://github.com/theSharque/mcp-jperf.git
 cd mcp-jperf
 ```
 
@@ -178,26 +178,29 @@ Edit `.continue/config.json`:
 | Tool | Description |
 |------|-------------|
 | `list_java_processes` | List running Java processes (pid, mainClass, args). Use `topN` (default 10) to limit. |
-| `start_profiling` | Start JFR recording with `settings=profile`. Pass `pid`, `duration` (seconds), optional `recordingName`. |
-| `stop_profiling` | Stop recording and save to file. Requires `pid` and `recordingId` from start_profiling. |
-| `analyze_threads` | Thread dump (jstack). Pass `pid`, optional `topN` (default 10) to limit threads. |
-| `heap_histogram` | Class histogram (GC.class_histogram). Top classes by instances/bytes. Pass `pid`, optional `topN` (20), `all` (include unreachable). |
+| `start_profiling` | Start JFR recording with `settings=profile`. Pass `pid`, `duration` (seconds). Optional: `memorysize` (e.g. "20M"), `stackdepth` (default 128). |
+| `list_jfr_recordings` | List active JFR recordings for a process. Use before `stop_profiling` to get `recordingId`. |
+| `stop_profiling` | Stop recording and save to recordings/new_profile.jfr. Requires `pid` and `recordingId`. |
+| `check_deadlock` | Check for Java-level deadlocks. Returns structured JSON with threads, locks, and cycle. |
+| `analyze_threads` | Thread dump (jstack) with deadlock summary. Pass `pid`, optional `topN` (default 10). |
+| `heap_histogram` | Class histogram (GC.class_histogram). Pass `pid`, optional `topN` (20), `all` (triggers full GC — may pause app). |
 | `heap_dump` | Create .hprof heap dump for MAT/VisualVM. Pass `pid`. Saved to recordings/heap_dump.hprof. |
 | `heap_info` | Brief heap summary. Pass `pid`. |
 | `vm_info` | JVM info: uptime, version, flags. Pass `pid`. |
-| `trace_method` | Build call tree for a method from a .jfr file. Pass `filepath`, `className`, `methodName`, optional `topN`. |
-| `parse_jfr_summary` | Parse .jfr into summary: top methods, GC stats, anomalies. Pass `filepath`, optional `events`, `topN`. |
-| `profile_memory` | Memory profile: top allocators, GC, potential leaks. Pass `filepath`, optional `topN`. |
-| `profile_time` | CPU bottleneck profile (bottom-up). Pass `filepath`, optional `topN`. |
-| `profile_frequency` | Call frequency profile (leaf frames). Pass `filepath`, optional `topN`. |
+| `trace_method` | Build call tree for a method from .jfr. Pass `className`, `methodName`. Optional: `filepath` (default new_profile), `topN`. |
+| `parse_jfr_summary` | Parse .jfr into summary: top methods, GC stats, anomalies. Optional: `filepath` (default new_profile), `events`, `topN`. |
+| `profile_memory` | Memory profile: top allocators, GC, potential leaks. Optional: `filepath` (default new_profile), `topN`. |
+| `profile_time` | CPU bottleneck profile (bottom-up). Optional: `filepath` (default new_profile), `topN`. |
+| `profile_frequency` | Call frequency profile (leaf frames). Optional: `filepath` (default new_profile), `topN`. |
 
 ## Example Workflow
 
 1. **List processes** → `list_java_processes`
 2. **Start recording** → `start_profiling` with `pid` and `duration` (e.g. 60)
 3. Wait for `duration` seconds (or let it run)
-4. **Stop and save** → `stop_profiling` with `pid` and `recordingId`
-5. **Analyze** → Use `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, or `trace_method` with the saved .jfr path
+4. **Check recordings** (optional) → `list_jfr_recordings` to get `recordingId`
+5. **Stop and save** → `stop_profiling` with `pid` and `recordingId`
+6. **Analyze** → Use `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, or `trace_method` (filepath defaults to new_profile)
 
 ## Limitations
 

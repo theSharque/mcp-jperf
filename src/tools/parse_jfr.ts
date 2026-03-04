@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
 import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { formatError } from "../utils/errors.js";
 
 export const parseJfrSummarySchema = z.object({
   filepath: z.string(),
@@ -17,7 +18,7 @@ export async function parseJfrSummary(input: ParseJfrSummaryInput): Promise<stri
   const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
-    return JSON.stringify({ error: `File not found: ${filepath}` });
+    return formatError(`File not found: ${filepath}`, "FILE_NOT_FOUND", "Create a recording with start_profiling and stop_profiling.");
   }
 
   const events = input.events ?? [

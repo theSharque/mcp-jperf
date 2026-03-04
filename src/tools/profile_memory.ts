@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { runJfr } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
 import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { formatError } from "../utils/errors.js";
 
 export const profileMemorySchema = z.object({
   filepath: z.string(),
@@ -25,7 +26,7 @@ export async function profileMemory(input: ProfileMemoryInput): Promise<string> 
   const filepath = resolveProfilePath(input.filepath);
 
   if (!existsSync(filepath)) {
-    return JSON.stringify({ error: `File not found: ${filepath}` });
+    return formatError(`File not found: ${filepath}`, "FILE_NOT_FOUND", "Create a recording with start_profiling and stop_profiling.");
   }
 
   const output = await runJfr(["print", "--json", "--events", MEMORY_EVENTS, filepath]);
@@ -64,7 +65,7 @@ export async function profileMemory(input: ProfileMemoryInput): Promise<string> 
       }
     }
   } catch {
-    return JSON.stringify({ error: "Failed to parse JFR output. Ensure recording used settings=profile." });
+    return formatError("Failed to parse JFR output.", "PARSE_ERROR", "Ensure recording used settings=profile.");
   }
 
   const topAllocators = [...allocatorCount.entries()]

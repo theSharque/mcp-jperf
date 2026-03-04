@@ -12,6 +12,19 @@ export async function analyzeThreads(input: AnalyzeThreadsInput): Promise<string
   const { pid, topN } = input;
   const output = runJcmd(pid, "Thread.print -l");
 
+  const deadlockMatch = output.match(/Found (\d+) Java-level deadlock(s)?/);
+  const deadlockCount = deadlockMatch ? parseInt(deadlockMatch[1], 10) : 0;
+  const blockedCount = (output.match(/\bBLOCKED\b/g) ?? []).length;
+  const waitingCount = (output.match(/\bWAITING\b/g) ?? []).length;
+  const summaryLines: string[] = [];
+  if (deadlockCount > 0) {
+    summaryLines.push(
+      `⚠ Deadlock detected: ${deadlockCount} Java-level deadlock${deadlockCount === 1 ? "" : "s"}.`
+    );
+  }
+  summaryLines.push(`Threads: ${blockedCount} BLOCKED, ${waitingCount} WAITING (of shown).`);
+  const summary = "=== " + summaryLines.join(" ") + " ===\n";
+
   const threadSections: string[] = [];
   let current = "";
 
@@ -26,5 +39,5 @@ export async function analyzeThreads(input: AnalyzeThreadsInput): Promise<string
   if (current.trim()) threadSections.push(current.trim());
 
   const limited = threadSections.slice(0, topN);
-  return limited.join("\n\n");
+  return summary + limited.join("\n\n");
 }
