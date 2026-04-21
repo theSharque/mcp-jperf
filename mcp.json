@@ -1,9 +1,8 @@
 {
   "mcpServers": {
     "javaperf": {
-      "command": "node",
-      "args": ["dist/index.js"],
-      "cwd": "${workspaceFolder}"
+      "command": "npx",
+      "args": ["-y", "javaperf"]
     }
   }
 }
