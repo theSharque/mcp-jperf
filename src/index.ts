@@ -20,7 +20,7 @@ import { checkDeadlock } from "./tools/check_deadlock.js";
 
 const server = new McpServer({
   name: "javaperf",
-  version: "1.2.1",
+  version: "1.2.2",
 });
 
 server.registerTool(
