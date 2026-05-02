@@ -178,7 +178,16 @@ Edit `.continue/config.json`:
 | Tool | Description |
 |------|-------------|
 | `list_java_processes` | List running Java processes (pid, mainClass, args). Use `topN` (default 10) to limit. |
-| `start_profiling` | Start JFR recording with `settings=profile`. Pass `pid`, `duration` (seconds). Optional: `memorysize` (e.g. "20M"), `stackdepth` (default 128). |
+| `start_profiling` | Start JFR. Pass `pid`, `duration` (seconds). Optional: `preset` (default effective: `profile`), `settingsFile` (path to `.jfc`, mutually exclusive with `preset`), `memorysize`, `stackdepth` (default 128). |
+| `profile_jfr_network` | Socket I/O summary from `.jfr` (`jdk.SocketRead`, `jdk.SocketWrite`). Optional `filepath` (default new_profile), `topN`. |
+| `profile_jfr_file_io` | File read/write summary (`jdk.FileRead`, `jdk.FileWrite`). Optional `filepath`, `topN`. |
+| `profile_jfr_locks` | Monitor contention (`jdk.JavaMonitorBlocked`). Optional `filepath`, `topN`. |
+| `profile_jfr_native` | Native-method CPU hotspots (`jdk.NativeMethodSample`). Optional `filepath`, `topN`. |
+| `native_memory_summary` | `jcmd VM.native_memory summary` — requires JVM with `-XX:NativeMemoryTracking=summary` or `detail`. Pass `pid`. |
+| `gc_class_stats` | `jcmd GC.class_stats` when available (often JDK 21+). Pass `pid`. |
+| `gc_finalizer_info` | `jcmd GC.finalizer_info`. Pass `pid`. |
+| `compiler_codecache` | `jcmd Compiler.codecache`. Pass `pid`. |
+| `compiler_queue` | `jcmd Compiler.queue`. Pass `pid`. |
 | `list_jfr_recordings` | List active JFR recordings for a process. Use before `stop_profiling` to get `recordingId`. |
 | `stop_profiling` | Stop recording and save to recordings/new_profile.jfr. Requires `pid` and `recordingId`. |
 | `check_deadlock` | Check for Java-level deadlocks. Returns structured JSON with threads, locks, and cycle. |
@@ -200,7 +209,18 @@ Edit `.continue/config.json`:
 3. Wait for `duration` seconds (or let it run)
 4. **Check recordings** (optional) → `list_jfr_recordings` to get `recordingId`
 5. **Stop and save** → `stop_profiling` with `pid` and `recordingId`
-6. **Analyze** → Use `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, or `trace_method` (filepath defaults to new_profile)
+6. **Analyze** → `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, or `profile_jfr_native` (events must exist in the recording — use `start_profiling` with a suitable preset or `.jfc` via `settingsFile`)
+
+## Remote JVM (stdio MCP)
+
+javaperf uses stdio MCP and attaches to JVMs via local `jps`/`jcmd`. That only works **on the OS account and host where the MCP process runs**.
+
+To diagnose a JVM on another machine:
+
+- Run the MCP server (your IDE connector, Cursor, or Claude Desktop) **on that machine**, for example SSH remote workspace, Codespaces, CI runner checkout on the server, or a shell session on the same host as the process.
+- **Do not** rely on piping `jcmd` over plain SSH from another host unless you deliberately run MCP there; attaching across hosts is outside this server’s scope.
+
+Requirements (same user, local attach) listed under **Limitations** still apply.
 
 ## Limitations
 

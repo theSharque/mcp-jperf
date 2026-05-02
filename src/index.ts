@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { listJavaProcesses } from "./tools/list_procs.js";
-import { startProfiling } from "./tools/start_profiling.js";
+import { startProfiling, startProfilingSchema } from "./tools/start_profiling.js";
 import { stopProfiling } from "./tools/stop_profiling.js";
 import { analyzeThreads } from "./tools/analyze_threads.js";
 import { traceMethod } from "./tools/trace_method.js";
@@ -17,10 +17,19 @@ import { heapInfo } from "./tools/heap_info.js";
 import { vmInfo } from "./tools/vm_info.js";
 import { listJfrRecordings } from "./tools/list_jfr_recordings.js";
 import { checkDeadlock } from "./tools/check_deadlock.js";
+import { profileJfrNetwork } from "./tools/profile_jfr_network.js";
+import { profileJfrFileIo } from "./tools/profile_jfr_file_io.js";
+import { profileJfrLocks } from "./tools/profile_jfr_locks.js";
+import { profileJfrNative } from "./tools/profile_jfr_native.js";
+import { nativeMemorySummary } from "./tools/native_memory_summary.js";
+import { gcClassStats } from "./tools/gc_class_stats.js";
+import { gcFinalizerInfo } from "./tools/gc_finalizer_info.js";
+import { compilerCodecache } from "./tools/compiler_codecache.js";
+import { compilerQueue } from "./tools/compiler_queue.js";
 
 const server = new McpServer({
   name: "javaperf",
-  version: "1.2.2",
+  version: "1.3.0",
 });
 
 server.registerTool(
@@ -46,31 +55,9 @@ server.registerTool(
 server.registerTool(
   "start_profiling",
   {
-    description: "Starts a Java Flight Recorder (JFR) recording on the specified Java process. Uses settings=profile for a full dump. Before starting, rotates files: deletes old_profile.jfr, renames new_profile.jfr → old_profile.jfr. Call list_jfr_recordings to see active recordings; call stop_profiling after duration to save to recordings/new_profile.jfr.",
-    inputSchema: z.object({
-      pid: z
-        .number()
-        .int()
-        .positive()
-        .describe("Process ID of the Java application to profile. Get this from list_java_processes."),
-      duration: z
-        .number()
-        .int()
-        .positive()
-        .describe("Recording duration in seconds. Typical values: 10–60 for quick checks, 300+ for load testing."),
-      memorysize: z
-        .string()
-        .optional()
-        .describe("JFR buffer size, e.g. '20M'. Default is 10M. Increase for long or busy recordings."),
-      stackdepth: z
-        .number()
-        .int()
-        .min(32)
-        .max(2048)
-        .optional()
-        .default(128)
-        .describe("Stack trace depth for JFR events. Default 128. Increase if you see truncated stacks."),
-    }),
+    description:
+      "Starts JFR on the target PID. Rotates recordings (old_profile.jfr ← new_profile.jfr). Default preset is profile. Optional preset or settingsFile (.jfc, cwd-relative or absolute)—mutually exclusive. Builtin presets may omit socket/I/O/native/locks; use a custom .jfc for jdk.SocketRead/Write, FileRead/Write, JavaMonitorBlocked, NativeMethodSample. Then list_jfr_recordings and stop_profiling.",
+    inputSchema: startProfilingSchema,
   },
   async (args) => ({
     content: [{ type: "text", text: await startProfiling(args) }],
@@ -373,6 +360,148 @@ server.registerTool(
   },
   async (args) => ({
     content: [{ type: "text", text: await profileFrequency(args) }],
+  })
+);
+
+server.registerTool(
+  "profile_jfr_network",
+  {
+    description:
+      "Summarize JDK socket I/O from a .jfr (jdk.SocketRead, jdk.SocketWrite): event counts, total bytes read/written where available, top endpoints (host:port / address), and cumulative stack hotspots. Recording must include those events (custom .jfc or preset that enables them). If emptyEvents, use start_profiling settingsFile.",
+    inputSchema: z.object({
+      filepath: z
+        .string()
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr. Shortcuts: new_profile, old_profile, or absolute path."),
+      topN: z
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .optional()
+        .default(10)
+        .describe("Top N endpoints and methods."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await profileJfrNetwork(args) }],
+  })
+);
+
+server.registerTool(
+  "profile_jfr_file_io",
+  {
+    description:
+      "Summarize file read/write events (jdk.FileRead, jdk.FileWrite): counts, bytes, top paths, stack hotspots. Events must exist in recording; configure via start_profiling preset or settingsFile (.jfc).",
+    inputSchema: z.object({
+      filepath: z
+        .string()
+        .optional()
+        .default("new_profile")
+        .describe("Path to .jfr. Shortcuts: new_profile, old_profile."),
+      topN: z.number().int().min(1).max(100).optional().default(10).describe("Top N paths/methods."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await profileJfrFileIo(args) }],
+  })
+);
+
+server.registerTool(
+  "profile_jfr_locks",
+  {
+    description:
+      "Contention snapshot from jdk.JavaMonitorBlocked: weight by blocked duration vs count, tops by monitor class, stack hotspots. Enable event in recording via custom .jfc if missing.",
+    inputSchema: z.object({
+      filepath: z.string().optional().default("new_profile"),
+      topN: z.number().int().min(1).max(100).optional().default(10),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await profileJfrLocks(args) }],
+  })
+);
+
+server.registerTool(
+  "profile_jfr_native",
+  {
+    description:
+      "CPU-style cumulative hotspots from jdk.NativeMethodSample stacks. Recording must enable NativeMethodSample (often requires custom .jfc).",
+    inputSchema: z.object({
+      filepath: z.string().optional().default("new_profile"),
+      topN: z.number().int().min(1).max(100).optional().default(10),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await profileJfrNative(args) }],
+  })
+);
+
+server.registerTool(
+  "native_memory_summary",
+  {
+    description:
+      "jcmd VM.native_memory summary=true. Requires JVM started with -XX:NativeMemoryTracking=summary or detail; otherwise explains how to enable.",
+    inputSchema: z.object({
+      pid: z.number().int().positive(),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await nativeMemorySummary(args) }],
+  })
+);
+
+server.registerTool(
+  "gc_class_stats",
+  {
+    description:
+      "jcmd GC.class_stats (class loader / metaspace style stats where supported—often JDK 21+). On older JDK returns error hint; use heap_info or heap_histogram instead.",
+    inputSchema: z.object({
+      pid: z.number().int().positive(),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await gcClassStats(args) }],
+  })
+);
+
+server.registerTool(
+  "gc_finalizer_info",
+  {
+    description: "jcmd GC.finalizer_info — finalizer queue diagnostics for the live process.",
+    inputSchema: z.object({
+      pid: z.number().int().positive(),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await gcFinalizerInfo(args) }],
+  })
+);
+
+server.registerTool(
+  "compiler_codecache",
+  {
+    description: "jcmd Compiler.codecache — code heap usage and related JVM output.",
+    inputSchema: z.object({
+      pid: z.number().int().positive(),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await compilerCodecache(args) }],
+  })
+);
+
+server.registerTool(
+  "compiler_queue",
+  {
+    description: "jcmd Compiler.queue — methods queued for JIT compilation.",
+    inputSchema: z.object({
+      pid: z.number().int().positive(),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await compilerQueue(args) }],
   })
 );
 

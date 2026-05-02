@@ -40,3 +40,47 @@ export function getMethodKey(frame: JfrFrame): string {
   const name = getMethodName(frame);
   return cls ? `${cls}.${name}` : name;
 }
+
+export function getEventValues(ev: unknown): Record<string, unknown> {
+  const e = ev as { values?: Record<string, unknown> };
+  const v = e?.values;
+  return v !== undefined && typeof v === "object" && v !== null && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
+}
+
+export function toNumberLoose(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  if (raw && typeof raw === "object" && raw !== null) {
+    const o = raw as { ticks?: unknown; value?: unknown; bits?: unknown };
+    const t = o.ticks;
+    if (typeof t === "number" && Number.isFinite(t)) return t;
+    return toNumberLoose(o.value ?? o.bits);
+  }
+  return undefined;
+}
+
+export function getValuesNumber(values: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const k of keys) {
+    const hit = toNumberLoose(values[k]);
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+export function getMonitorOrPathKey(values: Record<string, unknown>, preferredKeys: string[]): string | undefined {
+  for (const k of preferredKeys) {
+    const val = values[k];
+    if (typeof val === "string" && val.length > 0) return val;
+    if (val && typeof val === "object") {
+      const nm = val as { type?: unknown; typeName?: unknown; name?: unknown; string?: unknown };
+      const tn = nm.typeName ?? nm.type ?? nm.name ?? nm.string;
+      if (typeof tn === "string" && tn.length > 0) return tn.replace(/\//g, ".");
+    }
+  }
+  return undefined;
+}

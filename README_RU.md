@@ -178,7 +178,16 @@ npx @modelcontextprotocol/inspector node dist/index.js
 | Инструмент | Описание |
 |------------|----------|
 | `list_java_processes` | Список Java-процессов (pid, mainClass, args). Параметр `topN` (по умолчанию 10) ограничивает вывод. |
-| `start_profiling` | Запуск JFR-записи с `settings=profile`. Параметры: `pid`, `duration` (сек). Опционально: `memorysize` (напр. "20M"), `stackdepth` (по умолчанию 128). |
+| `start_profiling` | Запись JFR. Параметры: `pid`, `duration` (сек). Опционально: `preset` (если не задан — эффективно `profile`), `settingsFile` (`.jfc`, взаимоисключено с `preset`), `memorysize`, `stackdepth` (128 по умолчанию). |
+| `profile_jfr_network` | Сводка по сокетам из `.jfr` (`jdk.SocketRead`, `jdk.SocketWrite`). Опционально `filepath`, `topN`. |
+| `profile_jfr_file_io` | Сводка по файлам (`jdk.FileRead`, `jdk.FileWrite`). Опционально `filepath`, `topN`. |
+| `profile_jfr_locks` | Контенция мониторов (`jdk.JavaMonitorBlocked`). Опционально `filepath`, `topN`. |
+| `profile_jfr_native` | Нативные CPU-хотспоты (`jdk.NativeMethodSample`). Опционально `filepath`, `topN`. |
+| `native_memory_summary` | `jcmd VM.native_memory summary` — нужен `-XX:NativeMemoryTracking=summary` или `detail`. Параметр: `pid`. |
+| `gc_class_stats` | `jcmd GC.class_stats` (часто только JDK 21+). Параметр: `pid`. |
+| `gc_finalizer_info` | `jcmd GC.finalizer_info`. Параметр: `pid`. |
+| `compiler_codecache` | `jcmd Compiler.codecache`. Параметр: `pid`. |
+| `compiler_queue` | `jcmd Compiler.queue`. Параметр: `pid`. |
 | `list_jfr_recordings` | Список активных JFR-записей процесса. Использовать перед `stop_profiling` для получения `recordingId`. |
 | `stop_profiling` | Остановка записи и сохранение в recordings/new_profile.jfr. Требует `pid` и `recordingId`. |
 | `check_deadlock` | Проверка Java-level deadlock. Возвращает JSON с потоками, блокировками и циклом. |
@@ -200,7 +209,18 @@ npx @modelcontextprotocol/inspector node dist/index.js
 3. Подождать `duration` секунд
 4. **Проверить записи** (опционально) → `list_jfr_recordings` для получения `recordingId`
 5. **Остановка и сохранение** → `stop_profiling` с `pid` и `recordingId`
-6. **Анализ** → Использовать `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency` или `trace_method` (filepath по умолчанию — new_profile)
+6. **Анализ** → `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, `profile_jfr_native` (в записи должны быть нужные типы событий — см. `start_profiling`: `preset` или `settingsFile` с `.jfc`)
+
+## Удалённая JVM и stdio MCP
+
+javaperf работает через stdio MCP и цепляется к JVM только **локально** (`jps`/`jcmd` на той же машине и том же пользователе).
+
+Чтобы смотреть процесс на другом хосте:
+
+- запускайте MCP/IDE-сессию **на том же хосте**, что и приложение (SSH workspace, среда на сервере, CI job на нужной машине и т.д.);
+- простой просмотр с другой машины без запуска MCP там не поддерживается.
+
+Те же ограничения («локально», один пользователь) указаны ниже в **Ограничения**.
 
 ## Ограничения
 
