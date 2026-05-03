@@ -26,10 +26,11 @@ import { gcClassStats } from "./tools/gc_class_stats.js";
 import { gcFinalizerInfo } from "./tools/gc_finalizer_info.js";
 import { compilerCodecache } from "./tools/compiler_codecache.js";
 import { compilerQueue } from "./tools/compiler_queue.js";
+import { VERSION } from "./version.js";
 
 const server = new McpServer({
   name: "javaperf",
-  version: "1.3.0",
+  version: VERSION,
 });
 
 server.registerTool(
