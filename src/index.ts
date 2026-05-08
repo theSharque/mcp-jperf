@@ -255,8 +255,8 @@ server.registerTool(
         .describe("Maximum number of call paths (branches) to return in the call tree. Default: 10."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await traceMethod(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await traceMethod(args, context) }],
   })
 );
 
@@ -284,8 +284,8 @@ server.registerTool(
         .describe("Maximum number of top methods to include in the summary. Default: 10."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await parseJfrSummary(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await parseJfrSummary(args, context) }],
   })
 );
 
@@ -309,8 +309,8 @@ server.registerTool(
         .describe("Maximum number of top allocators to return. Default: 10."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileMemory(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileMemory(args, context) }],
   })
 );
 
@@ -334,8 +334,8 @@ server.registerTool(
         .describe("Maximum number of top methods by CPU time to return. Default: 10."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileTime(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileTime(args, context) }],
   })
 );
 
@@ -359,8 +359,8 @@ server.registerTool(
         .describe("Maximum number of top methods by call frequency to return. Default: 10."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileFrequency(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileFrequency(args, context) }],
   })
 );
 
@@ -385,8 +385,8 @@ server.registerTool(
         .describe("Top N endpoints and methods."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileJfrNetwork(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileJfrNetwork(args, context) }],
   })
 );
 
@@ -404,8 +404,8 @@ server.registerTool(
       topN: z.number().int().min(1).max(100).optional().default(10).describe("Top N paths/methods."),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileJfrFileIo(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileJfrFileIo(args, context) }],
   })
 );
 
@@ -419,8 +419,8 @@ server.registerTool(
       topN: z.number().int().min(1).max(100).optional().default(10),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileJfrLocks(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileJfrLocks(args, context) }],
   })
 );
 
@@ -434,8 +434,8 @@ server.registerTool(
       topN: z.number().int().min(1).max(100).optional().default(10),
     }),
   },
-  async (args) => ({
-    content: [{ type: "text", text: await profileJfrNative(args) }],
+  async (args, context) => ({
+    content: [{ type: "text", text: await profileJfrNative(args, context) }],
   })
 );
 

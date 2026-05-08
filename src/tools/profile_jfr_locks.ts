@@ -1,11 +1,17 @@
 import { z } from "zod";
 import {
-  loadJfrEventList,
+  streamJfrEvents,
   emptyHintJfr,
-  accumulateBlockedEvents,
-  accumulateCumulativeForTypes,
   topNFromMap,
 } from "../utils/jfr-parse.js";
+import {
+  getEventType,
+  getEventValues,
+  getMonitorOrPathKey,
+  getValuesNumber,
+  getStackTrace,
+  getMethodKey,
+} from "../utils/jfr-json.js";
 
 export const profileJfrLocksSchema = z.object({
   filepath: z.string().optional().default("new_profile"),
@@ -16,14 +22,36 @@ export type ProfileJfrLocksInput = z.infer<typeof profileJfrLocksSchema>;
 
 const TYPE = "jdk.JavaMonitorBlocked";
 
-export async function profileJfrLocks(input: ProfileJfrLocksInput): Promise<string> {
+export async function profileJfrLocks(input: ProfileJfrLocksInput, context?: unknown): Promise<string> {
   const { topN } = input;
-  const loaded = await loadJfrEventList(input.filepath, TYPE);
-  if (typeof loaded === "string") return loaded;
+  const byMonitor = new Map<string, number>();
+  const stackCounts = new Map<string, number>();
 
-  const { eventsList } = loaded;
-  const byMonitor = accumulateBlockedEvents(eventsList);
-  const stackCounts = accumulateCumulativeForTypes(eventsList, new Set([TYPE]));
+  const loadError = await streamJfrEvents(
+    input.filepath,
+    TYPE,
+    (ev) => {
+      if (getEventType(ev) !== TYPE) return;
+      const values = getEventValues(ev);
+      const monitorKey =
+        getMonitorOrPathKey(values, ["monitorClass"]) ??
+        getMonitorOrPathKey(values, ["class"]) ??
+        "unknownMonitor";
+      const duration = getValuesNumber(values, ["duration"]);
+      const weight = typeof duration === "number" && duration > 0 ? duration : 1;
+      byMonitor.set(monitorKey, (byMonitor.get(monitorKey) ?? 0) + weight);
+
+      const frames = getStackTrace(ev)?.frames ?? [];
+      for (const frame of frames) {
+        const method = getMethodKey(frame);
+        if (!method) continue;
+        stackCounts.set(method, (stackCounts.get(method) ?? 0) + 1);
+      }
+    },
+    context,
+    "locks"
+  );
+  if (typeof loadError === "string") return loadError;
 
   if (byMonitor.size === 0) {
     return JSON.stringify(

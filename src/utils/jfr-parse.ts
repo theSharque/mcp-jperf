@@ -1,9 +1,8 @@
 import { existsSync } from "node:fs";
-import { runJfr } from "./jdk.js";
+import { streamJfrJsonEvents } from "./jdk.js";
 import { resolveProfilePath } from "./paths.js";
 import { formatError } from "./errors.js";
 import {
-  getEvents,
   getEventType,
   getStackTrace,
   getMethodKey,
@@ -12,10 +11,35 @@ import {
   getMonitorOrPathKey,
 } from "./jfr-json.js";
 
-export async function loadJfrEventList(
+type ProgressAwareRequest = {
+  _meta?: { progressToken?: string | number };
+  notify?: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+};
+
+async function notifyProgress(
+  context: unknown,
+  progress: number,
+  message: string
+): Promise<void> {
+  const mcpReq = (context as { mcpReq?: ProgressAwareRequest } | undefined)?.mcpReq;
+  const progressToken = mcpReq?._meta?.progressToken;
+  if (progressToken === undefined || mcpReq?.notify === undefined) return;
+  await mcpReq.notify({
+    method: "notifications/progress",
+    params: { progressToken, progress, message },
+  });
+}
+
+export async function streamJfrEvents(
   filepathKey: string,
-  eventsCsv: string
-): Promise<{ eventsList: unknown[] } | string> {
+  eventsCsv: string,
+  onEvent: (event: unknown) => void,
+  context?: unknown,
+  progressLabel?: string
+): Promise<void | string> {
   const filepath = resolveProfilePath(filepathKey);
   if (!existsSync(filepath)) {
     return formatError(
@@ -24,10 +48,21 @@ export async function loadJfrEventList(
       "Create a recording with start_profiling and stop_profiling."
     );
   }
-  const output = await runJfr(["print", "--json", "--events", eventsCsv, filepath]);
+
   try {
-    const parsed = JSON.parse(output);
-    return { eventsList: getEvents(parsed) };
+    await notifyProgress(context, 1, `Starting ${progressLabel ?? "JFR"} parsing`);
+    await streamJfrJsonEvents(
+      ["print", "--json", "--events", eventsCsv, filepath],
+      onEvent,
+      (processed) => {
+        void notifyProgress(
+          context,
+          Math.max(processed, 1),
+          `Parsed ${processed} ${progressLabel ?? "JFR"} events`
+        );
+      }
+    );
+    return;
   } catch {
     return formatError("Failed to parse JFR JSON.", "PARSE_ERROR", "Ensure the .jfr file is valid.");
   }

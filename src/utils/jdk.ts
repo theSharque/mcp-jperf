@@ -137,3 +137,120 @@ export function runJfr(args: string[]): Promise<string> {
     });
   });
 }
+
+export function streamJfrJsonEvents(
+  args: string[],
+  onEvent: (event: unknown) => void,
+  onProgress?: (eventsProcessed: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const jfrPath = jdkCmd("jfr");
+    const child = spawn(jfrPath, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    let eventsProcessed = 0;
+
+    let inString = false;
+    let escaped = false;
+    let foundEventsKey = false;
+    let inEventsArray = false;
+    let scanningKey = "";
+    let objectDepth = 0;
+    let objectBuffer = "";
+
+    const consumeChar = (ch: string): void => {
+      if (objectDepth > 0) {
+        objectBuffer += ch;
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            return;
+          }
+          if (ch === "\\") {
+            escaped = true;
+            return;
+          }
+          if (ch === "\"") inString = false;
+          return;
+        }
+        if (ch === "\"") {
+          inString = true;
+          return;
+        }
+        if (ch === "{") objectDepth++;
+        if (ch === "}") objectDepth--;
+        if (objectDepth === 0) {
+          try {
+            onEvent(JSON.parse(objectBuffer));
+            eventsProcessed++;
+            if (eventsProcessed % 5000 === 0) onProgress?.(eventsProcessed);
+          } catch {
+            // Ignore malformed fragments and continue scanning.
+          }
+          objectBuffer = "";
+        }
+        return;
+      }
+
+      if (!foundEventsKey) {
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            return;
+          }
+          if (ch === "\\") {
+            escaped = true;
+            return;
+          }
+          if (ch === "\"") {
+            inString = false;
+            foundEventsKey = scanningKey === "events";
+            scanningKey = "";
+            return;
+          }
+          scanningKey += ch;
+          return;
+        }
+        if (ch === "\"") {
+          inString = true;
+          scanningKey = "";
+        }
+        return;
+      }
+
+      if (!inEventsArray) {
+        if (ch === "[") inEventsArray = true;
+        return;
+      }
+
+      if (ch === "{") {
+        objectDepth = 1;
+        objectBuffer = "{";
+      }
+    };
+
+    child.stdout?.on("data", (data: Buffer) => {
+      const text = data.toString();
+      for (const ch of text) consumeChar(ch);
+    });
+
+    child.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`jfr exited ${code}: ${stderr}`));
+      } else {
+        onProgress?.(eventsProcessed);
+        resolve();
+      }
+    });
+
+    child.on("error", (err) => {
+      const hint = process.env.JAVA_HOME
+        ? "Check that JAVA_HOME points to JDK (jfr is in JDK 9+)."
+        : "Set JAVA_HOME or add JDK bin to PATH.";
+      reject(new Error(`jfr not found: ${err.message}. ${hint}`, { cause: err }));
+    });
+  });
+}

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { runJfr } from "../utils/jdk.js";
+import { runJfr, streamJfrJsonEvents } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
-import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 import { formatError } from "../utils/errors.js";
 
 export const parseJfrSummarySchema = z.object({
@@ -13,7 +13,7 @@ export const parseJfrSummarySchema = z.object({
 
 export type ParseJfrSummaryInput = z.infer<typeof parseJfrSummarySchema>;
 
-export async function parseJfrSummary(input: ParseJfrSummaryInput): Promise<string> {
+export async function parseJfrSummary(input: ParseJfrSummaryInput, context?: unknown): Promise<string> {
   const { topN } = input;
   const filepath = resolveProfilePath(input.filepath);
 
@@ -29,31 +29,37 @@ export async function parseJfrSummary(input: ParseJfrSummaryInput): Promise<stri
   ];
   const eventsArg = events.join(",");
 
-  const [summaryOut, jsonOut] = await Promise.all([
-    runJfr(["summary", filepath]),
-    runJfr(["print", "--json", "--events", eventsArg, filepath]),
-  ]);
+  const summaryOut = await runJfr(["summary", filepath]);
 
   const methodCount: Map<string, number> = new Map();
   let gcCount = 0;
   const anomalies: string[] = [];
 
   try {
-    const parsed = JSON.parse(jsonOut);
-    const eventsList = getEvents(parsed);
+    const mcpReq = (context as { mcpReq?: { _meta?: { progressToken?: string | number }; notify?: (notification: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; message?: string } }) => Promise<void> } } | undefined)?.mcpReq;
+    await streamJfrJsonEvents(
+      ["print", "--json", "--events", eventsArg, filepath],
+      (ev) => {
+        const typ = getEventType(ev);
+        if (typ === "jdk.GarbageCollection") gcCount++;
 
-    for (const ev of eventsList) {
-      const typ = getEventType(ev);
-      if (typ === "jdk.GarbageCollection") gcCount++;
-
-      if (typ === "jdk.ExecutionSample") {
-        const frames = getStackTrace(ev)?.frames ?? [];
-        for (const f of frames) {
-          const key = getMethodKey(f);
-          if (key) methodCount.set(key, (methodCount.get(key) ?? 0) + 1);
+        if (typ === "jdk.ExecutionSample") {
+          const frames = getStackTrace(ev)?.frames ?? [];
+          for (const f of frames) {
+            const key = getMethodKey(f);
+            if (key) methodCount.set(key, (methodCount.get(key) ?? 0) + 1);
+          }
         }
+      },
+      (processed) => {
+        const progressToken = mcpReq?._meta?.progressToken;
+        if (progressToken === undefined || mcpReq?.notify === undefined) return;
+        void mcpReq.notify({
+          method: "notifications/progress",
+          params: { progressToken, progress: Math.max(processed, 1), message: `Parsed ${processed} summary events` },
+        });
       }
-    }
+    );
 
     if (gcCount > 100) anomalies.push("High GC count - possible memory pressure");
   } catch {

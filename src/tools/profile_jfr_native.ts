@@ -1,10 +1,10 @@
 import { z } from "zod";
 import {
-  loadJfrEventList,
+  streamJfrEvents,
   emptyHintJfr,
-  accumulateCumulativeForTypes,
   topNFromMap,
 } from "../utils/jfr-parse.js";
+import { getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 
 export const profileJfrNativeSchema = z.object({
   filepath: z.string().optional().default("new_profile"),
@@ -15,13 +15,26 @@ export type ProfileJfrNativeInput = z.infer<typeof profileJfrNativeSchema>;
 
 const TYPE = "jdk.NativeMethodSample";
 
-export async function profileJfrNative(input: ProfileJfrNativeInput): Promise<string> {
+export async function profileJfrNative(input: ProfileJfrNativeInput, context?: unknown): Promise<string> {
   const { topN } = input;
-  const loaded = await loadJfrEventList(input.filepath, TYPE);
-  if (typeof loaded === "string") return loaded;
+  const stackCounts = new Map<string, number>();
 
-  const { eventsList } = loaded;
-  const stackCounts = accumulateCumulativeForTypes(eventsList, new Set([TYPE]));
+  const loadError = await streamJfrEvents(
+    input.filepath,
+    TYPE,
+    (ev) => {
+      if (getEventType(ev) !== TYPE) return;
+      const frames = getStackTrace(ev)?.frames ?? [];
+      for (const frame of frames) {
+        const method = getMethodKey(frame);
+        if (!method) continue;
+        stackCounts.set(method, (stackCounts.get(method) ?? 0) + 1);
+      }
+    },
+    context,
+    "native"
+  );
+  if (typeof loadError === "string") return loadError;
 
   if (stackCounts.size === 0) {
     return JSON.stringify(

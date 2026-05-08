@@ -1,11 +1,20 @@
 import { z } from "zod";
 import {
-  loadJfrEventList,
   emptyHintJfr,
-  accumulateFileIoEvents,
-  accumulateCumulativeForTypes,
   topNFromMap,
 } from "../utils/jfr-parse.js";
+import { streamJfrJsonEvents } from "../utils/jdk.js";
+import { resolveProfilePath } from "../utils/paths.js";
+import { existsSync } from "node:fs";
+import { formatError } from "../utils/errors.js";
+import {
+  getEventType,
+  getEventValues,
+  getValuesNumber,
+  getMonitorOrPathKey,
+  getStackTrace,
+  getMethodKey,
+} from "../utils/jfr-json.js";
 
 export const profileJfrFileIoSchema = z.object({
   filepath: z.string().optional().default("new_profile"),
@@ -17,14 +26,78 @@ export type ProfileJfrFileIoInput = z.infer<typeof profileJfrFileIoSchema>;
 const EVENTS = ["jdk.FileRead", "jdk.FileWrite"] as const;
 const EVENT_LIST = EVENTS.join(",");
 
-export async function profileJfrFileIo(input: ProfileJfrFileIoInput): Promise<string> {
-  const { topN } = input;
-  const loaded = await loadJfrEventList(input.filepath, EVENT_LIST);
-  if (typeof loaded === "string") return loaded;
+type ProgressAwareRequest = {
+  _meta?: { progressToken?: string | number };
+  notify?: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+};
 
-  const { eventsList } = loaded;
-  const { eventCount, bytesTotal, byPath } = accumulateFileIoEvents(eventsList);
-  const stackCounts = accumulateCumulativeForTypes(eventsList, new Set(EVENTS));
+async function notifyProgress(
+  context: unknown,
+  progress: number,
+  message: string
+): Promise<void> {
+  const mcpReq = (context as { mcpReq?: ProgressAwareRequest } | undefined)?.mcpReq;
+  const progressToken = mcpReq?._meta?.progressToken;
+  if (progressToken === undefined || mcpReq?.notify === undefined) return;
+  await mcpReq.notify({
+    method: "notifications/progress",
+    params: { progressToken, progress, message },
+  });
+}
+
+export async function profileJfrFileIo(input: ProfileJfrFileIoInput, context?: unknown): Promise<string> {
+  const { topN } = input;
+  const filepath = resolveProfilePath(input.filepath);
+  if (!existsSync(filepath)) {
+    return formatError(
+      `File not found: ${filepath}`,
+      "FILE_NOT_FOUND",
+      "Create a recording with start_profiling and stop_profiling."
+    );
+  }
+
+  let eventCount = 0;
+  let bytesTotal = 0;
+  const byPath = new Map<string, number>();
+  const stackCounts = new Map<string, number>();
+
+  try {
+    await notifyProgress(context, 1, "Starting JFR file I/O parsing");
+    await streamJfrJsonEvents(
+      ["print", "--json", "--events", EVENT_LIST, filepath],
+      (ev) => {
+        const typ = getEventType(ev);
+        if (!typ || !EVENTS.includes(typ as (typeof EVENTS)[number])) return;
+
+        eventCount++;
+        const values = getEventValues(ev);
+        const bytes =
+          getValuesNumber(values, ["bytesRead", "bytesWritten", "size", "length"]) ??
+          getValuesNumber(values, ["byteCount"]);
+        bytesTotal += bytes ?? 0;
+
+        const pathKey =
+          getMonitorOrPathKey(values, ["path"]) ??
+          (typeof values.file === "string" ? values.file : "(unknown)");
+        byPath.set(pathKey, (byPath.get(pathKey) ?? 0) + 1);
+
+        const frames = getStackTrace(ev)?.frames ?? [];
+        for (const frame of frames) {
+          const method = getMethodKey(frame);
+          if (!method) continue;
+          stackCounts.set(method, (stackCounts.get(method) ?? 0) + 1);
+        }
+      },
+      (processed) => {
+        void notifyProgress(context, Math.max(processed, 1), `Parsed ${processed} file I/O events`);
+      }
+    );
+  } catch {
+    return formatError("Failed to parse JFR JSON.", "PARSE_ERROR", "Ensure the .jfr file is valid.");
+  }
 
   if (eventCount === 0) {
     return JSON.stringify(

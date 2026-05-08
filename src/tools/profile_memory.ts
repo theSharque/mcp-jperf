@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { runJfr } from "../utils/jdk.js";
+import { streamJfrJsonEvents } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
-import { getEvents, getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { getEventType, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 import { formatError } from "../utils/errors.js";
 
 export const profileMemorySchema = z.object({
@@ -21,7 +21,29 @@ const MEMORY_EVENTS = [
   "jdk.HeapSummary",
 ].join(",");
 
-export async function profileMemory(input: ProfileMemoryInput): Promise<string> {
+type ProgressAwareRequest = {
+  _meta?: { progressToken?: string | number };
+  notify?: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+};
+
+async function notifyProgress(
+  context: unknown,
+  progress: number,
+  message: string
+): Promise<void> {
+  const mcpReq = (context as { mcpReq?: ProgressAwareRequest } | undefined)?.mcpReq;
+  const progressToken = mcpReq?._meta?.progressToken;
+  if (progressToken === undefined || mcpReq?.notify === undefined) return;
+  await mcpReq.notify({
+    method: "notifications/progress",
+    params: { progressToken, progress, message },
+  });
+}
+
+export async function profileMemory(input: ProfileMemoryInput, context?: unknown): Promise<string> {
   const { topN } = input;
   const filepath = resolveProfilePath(input.filepath);
 
@@ -29,41 +51,43 @@ export async function profileMemory(input: ProfileMemoryInput): Promise<string> 
     return formatError(`File not found: ${filepath}`, "FILE_NOT_FOUND", "Create a recording with start_profiling and stop_profiling.");
   }
 
-  const output = await runJfr(["print", "--json", "--events", MEMORY_EVENTS, filepath]);
-
   const allocatorCount: Map<string, number> = new Map();
   let gcCount = 0;
   const potentialLeaks: string[] = [];
-
   try {
-    const parsed = JSON.parse(output);
-    const eventsList = getEvents(parsed);
+    await notifyProgress(context, 1, "Starting JFR memory parsing");
+    await streamJfrJsonEvents(
+      ["print", "--json", "--events", MEMORY_EVENTS, filepath],
+      (ev) => {
+        const typ = getEventType(ev);
+        if (typ === "jdk.GarbageCollection") gcCount++;
 
-    for (const ev of eventsList) {
-      const typ = getEventType(ev);
-      if (typ === "jdk.GarbageCollection") gcCount++;
+        const stackTrace = getStackTrace(ev);
+        const frames = stackTrace?.frames;
 
-      const stackTrace = getStackTrace(ev);
-      const frames = stackTrace?.frames;
+        if (
+          (typ === "jdk.ObjectAllocationInNewTLAB" ||
+            typ === "jdk.ObjectAllocationOutsideTLAB" ||
+            typ === "jdk.ObjectAllocationSample") &&
+          frames?.length
+        ) {
+          const top = frames[0];
+          const key = getMethodKey(top);
+          if (key && key !== "unknown") {
+            allocatorCount.set(key, (allocatorCount.get(key) ?? 0) + 1);
+          }
+        }
 
-      if (
-        (typ === "jdk.ObjectAllocationInNewTLAB" ||
-          typ === "jdk.ObjectAllocationOutsideTLAB" ||
-          typ === "jdk.ObjectAllocationSample") &&
-        frames?.length
-      ) {
-        const top = frames[0];
-        const key = getMethodKey(top);
-        if (key && key !== "unknown")
-          allocatorCount.set(key, (allocatorCount.get(key) ?? 0) + 1);
+        if (typ === "jdk.OldObjectSample" && frames?.length) {
+          const top = frames[0];
+          const key = getMethodKey(top);
+          if (key) potentialLeaks.push(key);
+        }
+      },
+      (processed) => {
+        void notifyProgress(context, Math.max(processed, 1), `Parsed ${processed} memory events`);
       }
-
-      if (typ === "jdk.OldObjectSample" && frames?.length) {
-        const top = frames[0];
-        const key = getMethodKey(top);
-        if (key) potentialLeaks.push(key);
-      }
-    }
+    );
   } catch {
     return formatError("Failed to parse JFR output.", "PARSE_ERROR", "Ensure recording used settings=profile.");
   }
@@ -79,5 +103,6 @@ export async function profileMemory(input: ProfileMemoryInput): Promise<string> 
     potentialLeaks: potentialLeaks.length ? [...new Set(potentialLeaks)].slice(0, 5) : undefined,
   };
 
+  await notifyProgress(context, Math.max(allocatorCount.size + gcCount, 1), "Memory profile aggregation completed");
   return JSON.stringify(result, null, 2);
 }

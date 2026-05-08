@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { existsSync } from "node:fs";
-import { runJfr } from "../utils/jdk.js";
+import { streamJfrJsonEvents } from "../utils/jdk.js";
 import { resolveProfilePath } from "../utils/paths.js";
-import { getEvents, getStackTrace, getMethodKey } from "../utils/jfr-json.js";
+import { getStackTrace, getMethodKey } from "../utils/jfr-json.js";
 import { formatError } from "../utils/errors.js";
 
 export const traceMethodSchema = z.object({
@@ -15,7 +15,7 @@ export const traceMethodSchema = z.object({
 
 export type TraceMethodInput = z.infer<typeof traceMethodSchema>;
 
-export async function traceMethod(input: TraceMethodInput): Promise<string> {
+export async function traceMethod(input: TraceMethodInput, context?: unknown): Promise<string> {
   const { className, methodName, topN } = input;
   const filepath = resolveProfilePath(input.filepath);
 
@@ -26,38 +26,43 @@ export async function traceMethod(input: TraceMethodInput): Promise<string> {
   const events = input.events ?? ["jdk.ExecutionSample"];
   const eventsArg = events.join(",");
 
-  const output = await runJfr(["print", "--json", "--events", eventsArg, filepath]);
-
-  let eventsList: unknown[];
-  try {
-    const parsed = JSON.parse(output);
-    eventsList = getEvents(parsed);
-  } catch {
-    return formatError("Failed to parse JFR JSON output.", "PARSE_ERROR", "Ensure the .jfr file is valid and was created with settings=profile.");
-  }
-
   const targetMethod = `${className}.${methodName}`;
   const matchingPaths: Map<string, number> = new Map();
   const classNorm = className.replace(/\//g, ".");
+  const mcpReq = (context as { mcpReq?: { _meta?: { progressToken?: string | number }; notify?: (notification: { method: "notifications/progress"; params: { progressToken: string | number; progress: number; message?: string } }) => Promise<void> } } | undefined)?.mcpReq;
 
-  for (const ev of eventsList) {
-    const frames = getStackTrace(ev)?.frames ?? [];
-    const pathParts: string[] = [];
-    let found = false;
+  try {
+    await streamJfrJsonEvents(
+      ["print", "--json", "--events", eventsArg, filepath],
+      (ev) => {
+        const frames = getStackTrace(ev)?.frames ?? [];
+        const pathParts: string[] = [];
+        let found = false;
 
-    for (const f of frames) {
-      const fullMethod = getMethodKey(f);
-      if (fullMethod) pathParts.push(fullMethod);
+        for (const f of frames) {
+          const fullMethod = getMethodKey(f);
+          if (fullMethod) pathParts.push(fullMethod);
+          if (fullMethod.includes(classNorm) && fullMethod.includes(methodName)) {
+            found = true;
+          }
+        }
 
-      if (fullMethod.includes(classNorm) && fullMethod.includes(methodName)) {
-        found = true;
+        if (found && pathParts.length > 0) {
+          const path = pathParts.join(" <- ");
+          matchingPaths.set(path, (matchingPaths.get(path) ?? 0) + 1);
+        }
+      },
+      (processed) => {
+        const progressToken = mcpReq?._meta?.progressToken;
+        if (progressToken === undefined || mcpReq?.notify === undefined) return;
+        void mcpReq.notify({
+          method: "notifications/progress",
+          params: { progressToken, progress: Math.max(processed, 1), message: `Parsed ${processed} trace events` },
+        });
       }
-    }
-
-    if (found && pathParts.length > 0) {
-      const path = pathParts.join(" <- ");
-      matchingPaths.set(path, (matchingPaths.get(path) ?? 0) + 1);
-    }
+    );
+  } catch {
+    return formatError("Failed to parse JFR JSON output.", "PARSE_ERROR", "Ensure the .jfr file is valid and was created with settings=profile.");
   }
 
   if (matchingPaths.size === 0) {
