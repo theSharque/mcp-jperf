@@ -181,7 +181,7 @@ Edit `.continue/config.json`:
 | `start_profiling` | Start JFR. Pass `pid`, `duration` (seconds). Optional: `preset` (default effective: `profile`), `settingsFile` (path to `.jfc`, mutually exclusive with `preset`), `memorysize`, `stackdepth` (default 128). |
 | `profile_jfr_network` | Socket I/O summary from `.jfr` (`jdk.SocketRead`, `jdk.SocketWrite`). Optional `filepath` (default new_profile), `topN`. |
 | `profile_jfr_file_io` | File read/write summary (`jdk.FileRead`, `jdk.FileWrite`). Optional `filepath`, `topN`. |
-| `profile_jfr_locks` | Monitor contention (`jdk.JavaMonitorBlocked`). Optional `filepath`, `topN`. |
+| `profile_jfr_locks` | Monitor contention (`JavaMonitorBlocked`) and j.u.c parking (`ThreadPark`). Optional `filepath`, `topN`. Live waits: `analyze_threads structured=true`. |
 | `profile_jfr_native` | Native-method CPU hotspots (`jdk.NativeMethodSample`). Optional `filepath`, `topN`. |
 | `native_memory_summary` | `jcmd VM.native_memory summary` — requires JVM with `-XX:NativeMemoryTracking=summary` or `detail`. Pass `pid`. |
 | `gc_class_stats` | `jcmd GC.class_stats` when available (often JDK 21+). Pass `pid`. |
@@ -191,14 +191,16 @@ Edit `.continue/config.json`:
 | `list_jfr_recordings` | List active JFR recordings for a process. Use before `stop_profiling` to get `recordingId`. |
 | `stop_profiling` | Stop recording and save to recordings/new_profile.jfr. Requires `pid` and `recordingId`. |
 | `check_deadlock` | Check for Java-level deadlocks. Returns structured JSON with threads, locks, and cycle. |
-| `analyze_threads` | Thread dump (jstack) with deadlock summary. Pass `pid`, optional `topN` (default 10). |
-| `heap_histogram` | Class histogram (GC.class_histogram). Pass `pid`, optional `topN` (20), `all` (triggers full GC — may pause app). |
-| `heap_dump` | Create .hprof heap dump for MAT/VisualVM. Pass `pid`. Saved to recordings/heap_dump.hprof. |
+| `analyze_threads` | Thread dump (jstack) with deadlock summary. Pass `pid`, optional `topN` (default 10), `structured` (JSON lock-wait chains). Live snapshot; historical locks: `profile_jfr_locks`. |
+| `heap_histogram` | Class histogram (GC.class_histogram). Pass `pid`, optional `topN` (20), `all` (triggers full GC — may pause app). Static snapshot; use `heap_live_histogram_diff` for growth. |
+| `heap_live_histogram_diff` | Two histograms spaced by `intervalSeconds` (default 5). Top classes by instance/byte growth. First step in memory-leak workflow. Pass `pid`, optional `topN`, `all`, `minInstanceDelta`. |
+| `heap_dump` | Create .hprof for MAT/VisualVM. After `heap_live_histogram_diff`, use MAT Path to GC Roots. Pass `pid`. Saved to recordings/heap_dump.hprof. |
 | `heap_info` | Brief heap summary. Pass `pid`. |
 | `vm_info` | JVM info: uptime, version, flags. Pass `pid`. |
 | `trace_method` | Build call tree for a method from .jfr. Pass `className`, `methodName`. Optional: `filepath` (default new_profile), `topN`. |
 | `parse_jfr_summary` | Parse .jfr into summary: top methods, GC stats, anomalies. Optional: `filepath` (default new_profile), `events`, `topN`. |
-| `profile_memory` | Memory profile: top allocators, GC, potential leaks. Optional: `filepath` (default new_profile), `topN`. |
+| `profile_memory` | Memory profile: top allocators by bytes/count, allocation stacks, OldObjectSample by class. Optional: `filepath`, `topN`, `sortBy` (`bytes`/`count`). Pair with `gc_efficiency`, `heap_live_histogram_diff`. |
+| `gc_efficiency` | GC efficiency from .jfr: pause vs freed bytes per collector. Optional: `filepath`, `topN`. After `stop_profiling`. |
 | `profile_time` | CPU bottleneck profile (bottom-up). Optional: `filepath` (default new_profile), `topN`. |
 | `profile_frequency` | Call frequency profile (leaf frames). Optional: `filepath` (default new_profile), `topN`. |
 
@@ -209,7 +211,17 @@ Edit `.continue/config.json`:
 3. Wait for `duration` seconds (or let it run)
 4. **Check recordings** (optional) → `list_jfr_recordings` to get `recordingId`
 5. **Stop and save** → `stop_profiling` with `pid` and `recordingId`
-6. **Analyze** → `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, or `profile_jfr_native` (events must exist in the recording — use `start_profiling` with a suitable preset or `.jfc` via `settingsFile`)
+6. **Analyze** → `parse_jfr_summary`, `profile_memory`, `gc_efficiency`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, or `profile_jfr_native` (events must exist in the recording — use `start_profiling` with a suitable preset or `.jfc` via `settingsFile`)
+
+## Example Workflow: Memory leak hypothesis
+
+1. **List processes** → `list_java_processes`
+2. **Find growing classes** → `heap_live_histogram_diff` with `pid`, `intervalSeconds: 5`
+3. **Record under load** → `start_profiling` → wait → `stop_profiling`
+4. **Allocation profile** → `profile_memory` on `new_profile` (check `oldObjectSamplesByClass` for suspect class)
+5. **GC pressure** → `gc_efficiency` on the same `.jfr`
+6. **Confirm retention** → `heap_dump` → Eclipse MAT → Path to GC Roots (exclude weak/soft references)
+7. AI builds a coherent leak hypothesis from the combined results (no dedicated tool)
 
 ## Remote JVM (stdio MCP)
 

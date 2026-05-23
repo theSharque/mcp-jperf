@@ -34,3 +34,17 @@ JDK 8u262+ or 11+ must be installed for the profiling tools (`jps`, `jcmd`, `jfr
 
 - `npm run dev` blocks on stdin (it's a stdio server) — use piped input or `timeout` for non-interactive testing.
 - The `recordings/` directory is created at runtime by the server when profiling; it does not exist in the repo.
+
+### Memory leak investigation workflow
+
+This is a documented AI workflow — not a separate tool. Steps:
+
+1. `list_java_processes` → target `pid`
+2. `heap_live_histogram_diff` (e.g. `intervalSeconds: 5`) → classes growing in live heap
+3. `start_profiling` → reproduce load → `stop_profiling`
+4. `profile_memory` → allocators, allocation stacks, OldObjectSample by class (allocation site, not retention path)
+5. `gc_efficiency` → GC pause vs bytes freed
+6. `heap_dump` → Eclipse MAT → Path to GC Roots on suspect class (exclude weak/soft references)
+7. AI synthesizes a leak hypothesis from the combined evidence
+
+Related tools: `heap_histogram` (static snapshot), `heap_info`, `check_deadlock` / `analyze_threads structured=true` for lock issues, `profile_jfr_locks` for historical contention.

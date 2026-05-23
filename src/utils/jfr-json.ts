@@ -72,6 +72,37 @@ export function getValuesNumber(values: Record<string, unknown>, keys: string[])
   return undefined;
 }
 
+export function parseIsoDurationMs(raw: unknown): number | undefined {
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  const match = raw.match(/^PT(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/);
+  if (!match) return toNumberLoose(raw);
+  const hours = match[1] ? Number(match[1]) : 0;
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const seconds = match[3] ? Number(match[3]) : 0;
+  const totalMs = (hours * 3600 + minutes * 60 + seconds) * 1000;
+  return Number.isFinite(totalMs) ? totalMs : undefined;
+}
+
+export function getObjectClassName(values: Record<string, unknown>): string | undefined {
+  const direct = getMonitorOrPathKey(values, ["objectClass", "class"]);
+  if (direct) return direct;
+  const object = values.object;
+  if (object && typeof object === "object") {
+    const typeName = getMonitorOrPathKey(object as Record<string, unknown>, ["type", "typeName", "name"]);
+    if (typeName) return typeName;
+  }
+  return undefined;
+}
+
+export function stackSignature(frames: JfrFrame[] | undefined, depth = 8): string {
+  if (!frames?.length) return "";
+  return frames
+    .slice(0, depth)
+    .map((f) => getMethodKey(f))
+    .filter(Boolean)
+    .join(" <- ");
+}
+
 export function getMonitorOrPathKey(values: Record<string, unknown>, preferredKeys: string[]): string | undefined {
   for (const k of preferredKeys) {
     const val = values[k];

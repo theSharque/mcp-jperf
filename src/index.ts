@@ -12,6 +12,8 @@ import { profileMemory } from "./tools/profile_memory.js";
 import { profileTime } from "./tools/profile_time.js";
 import { profileFrequency } from "./tools/profile_frequency.js";
 import { heapHistogram } from "./tools/heap_histogram.js";
+import { heapLiveHistogramDiff } from "./tools/heap_live_histogram_diff.js";
+import { gcEfficiency } from "./tools/gc_efficiency.js";
 import { heapDump } from "./tools/heap_dump.js";
 import { heapInfo } from "./tools/heap_info.js";
 import { vmInfo } from "./tools/vm_info.js";
@@ -57,7 +59,7 @@ server.registerTool(
   "start_profiling",
   {
     description:
-      "Starts JFR on the target PID. Rotates recordings (old_profile.jfr ← new_profile.jfr). Default preset is profile. Optional preset or settingsFile (.jfc, cwd-relative or absolute)—mutually exclusive. Builtin presets may omit socket/I/O/native/locks; use a custom .jfc for jdk.SocketRead/Write, FileRead/Write, JavaMonitorBlocked, NativeMethodSample. Then list_jfr_recordings and stop_profiling.",
+      "Starts JFR on the target PID. Rotates recordings (old_profile.jfr ← new_profile.jfr). Default preset is profile. Optional preset or settingsFile (.jfc, cwd-relative or absolute)—mutually exclusive. Builtin presets may omit socket/I/O/native/locks; use a custom .jfc for jdk.SocketRead/Write, FileRead/Write, JavaMonitorBlocked, jdk.ThreadPark, NativeMethodSample. Then list_jfr_recordings and stop_profiling.",
     inputSchema: startProfilingSchema,
   },
   async (args) => ({
@@ -122,7 +124,8 @@ server.registerTool(
 server.registerTool(
   "analyze_threads",
   {
-    description: "Produces a thread dump of the specified Java process (equivalent to jstack -l). Shows each thread's name, state, and full stack trace with lock information. Use for diagnosing deadlocks, blocked threads, or high thread counts.",
+    description:
+      "Thread dump (jstack -l). Default: plain text. Set structured=true for JSON lock-wait chains (live snapshot). Historical contention: profile_jfr_locks. Deadlock cycle: check_deadlock.",
     inputSchema: z.object({
       pid: z
         .number()
@@ -137,6 +140,11 @@ server.registerTool(
         .optional()
         .default(10)
         .describe("Maximum number of threads to include in the output. Default: 10. Increase for applications with many threads."),
+      structured: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Return structured JSON with lockWaitChains instead of plain-text dump. Default: false."),
     }),
   },
   async (args) => ({
@@ -147,7 +155,8 @@ server.registerTool(
 server.registerTool(
   "heap_histogram",
   {
-    description: "Class histogram of live objects in the heap (jcmd GC.class_histogram). Returns top classes by memory usage — useful for memory leak investigation. Classes with unusually high instance count or bytes may indicate a leak.",
+    description:
+      "Static class histogram (jcmd GC.class_histogram). For live growth over time use heap_live_histogram_diff instead.",
     inputSchema: z.object({
       pid: z
         .number()
@@ -175,9 +184,45 @@ server.registerTool(
 );
 
 server.registerTool(
+  "heap_live_histogram_diff",
+  {
+    description:
+      "Two GC.class_histogram snapshots spaced by intervalSeconds; returns classes whose instance count grew most. Use first in memory-leak workflow; then profile_memory and heap_dump (MAT path-to-GC-roots). Each snapshot walks the heap and may pause the app.",
+    inputSchema: z.object({
+      pid: z.number().int().positive().describe("Process ID from list_java_processes."),
+      intervalSeconds: z
+        .number()
+        .int()
+        .min(1)
+        .max(60)
+        .optional()
+        .default(5)
+        .describe("Seconds between baseline and snapshot histograms. Default: 5."),
+      topN: z.number().int().min(1).max(200).optional().default(20),
+      all: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe("Include unreachable objects (-all). Triggers full GC and may pause the app."),
+      minInstanceDelta: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .default(0)
+        .describe("Ignore classes with instance growth below this threshold."),
+    }),
+  },
+  async (args) => ({
+    content: [{ type: "text", text: await heapLiveHistogramDiff(args) }],
+  })
+);
+
+server.registerTool(
   "heap_dump",
   {
-    description: "Creates a heap dump (.hprof file) for offline analysis in Eclipse MAT, VisualVM, or JProfiler. Saved to recordings/heap_dump.hprof (overwritten each call). Warning: file can be large (hundreds of MB to GB).",
+    description:
+      "Creates .hprof for Eclipse MAT / VisualVM. After heap_live_histogram_diff picks a growing class, use MAT Path to GC Roots (exclude weak/soft). Saved to recordings/heap_dump.hprof. Warning: large file.",
     inputSchema: z.object({
       pid: z
         .number()
@@ -292,7 +337,8 @@ server.registerTool(
 server.registerTool(
   "profile_memory",
   {
-    description: "Memory-focused profile from a .jfr file. Returns top memory allocators (class+method), GC statistics, and potential leak candidates from OldObjectSample events. Use when the goal is to find who allocates the most memory or identify memory leaks. Requires a recording made with settings=profile (which start_profiling uses by default).",
+    description:
+      "JFR memory profile: top allocators by bytes/count, allocation stacks, OldObjectSample by class (allocation site, not GC roots). Pair with heap_live_histogram_diff, gc_efficiency, heap_dump+MAT. Requires profile preset recording.",
     inputSchema: z.object({
       filepath: z
         .string()
@@ -307,10 +353,30 @@ server.registerTool(
         .optional()
         .default(10)
         .describe("Maximum number of top allocators to return. Default: 10."),
+      sortBy: z
+        .enum(["bytes", "count"])
+        .optional()
+        .default("bytes")
+        .describe("Primary ranking for topAllocators. Default: bytes."),
     }),
   },
   async (args, context) => ({
     content: [{ type: "text", text: await profileMemory(args, context) }],
+  })
+);
+
+server.registerTool(
+  "gc_efficiency",
+  {
+    description:
+      "GC efficiency from .jfr: pause time vs freed bytes per collector/cause. Use after stop_profiling; complements profile_memory and heap_info. Not a general JFR summary (see parse_jfr_summary).",
+    inputSchema: z.object({
+      filepath: z.string().optional().default("new_profile"),
+      topN: z.number().int().min(1).max(100).optional().default(10),
+    }),
+  },
+  async (args, context) => ({
+    content: [{ type: "text", text: await gcEfficiency(args, context) }],
   })
 );
 
@@ -413,7 +479,7 @@ server.registerTool(
   "profile_jfr_locks",
   {
     description:
-      "Contention snapshot from jdk.JavaMonitorBlocked: weight by blocked duration vs count, tops by monitor class, stack hotspots. Enable event in recording via custom .jfc if missing.",
+      "Lock contention from JFR: synchronized monitors (JavaMonitorBlocked) and j.u.c parking (ThreadPark). Live wait chains: analyze_threads structured=true. Deadlocks: check_deadlock. Enable events via custom .jfc if missing.",
     inputSchema: z.object({
       filepath: z.string().optional().default("new_profile"),
       topN: z.number().int().min(1).max(100).optional().default(10),

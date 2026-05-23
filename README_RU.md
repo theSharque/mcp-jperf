@@ -181,7 +181,7 @@ npx @modelcontextprotocol/inspector node dist/index.js
 | `start_profiling` | Запись JFR. Параметры: `pid`, `duration` (сек). Опционально: `preset` (если не задан — эффективно `profile`), `settingsFile` (`.jfc`, взаимоисключено с `preset`), `memorysize`, `stackdepth` (128 по умолчанию). |
 | `profile_jfr_network` | Сводка по сокетам из `.jfr` (`jdk.SocketRead`, `jdk.SocketWrite`). Опционально `filepath`, `topN`. |
 | `profile_jfr_file_io` | Сводка по файлам (`jdk.FileRead`, `jdk.FileWrite`). Опционально `filepath`, `topN`. |
-| `profile_jfr_locks` | Контенция мониторов (`jdk.JavaMonitorBlocked`). Опционально `filepath`, `topN`. |
+| `profile_jfr_locks` | Контенция: `JavaMonitorBlocked` и j.u.c (`ThreadPark`). Опционально `filepath`, `topN`. Live: `analyze_threads structured=true`. |
 | `profile_jfr_native` | Нативные CPU-хотспоты (`jdk.NativeMethodSample`). Опционально `filepath`, `topN`. |
 | `native_memory_summary` | `jcmd VM.native_memory summary` — нужен `-XX:NativeMemoryTracking=summary` или `detail`. Параметр: `pid`. |
 | `gc_class_stats` | `jcmd GC.class_stats` (часто только JDK 21+). Параметр: `pid`. |
@@ -191,14 +191,16 @@ npx @modelcontextprotocol/inspector node dist/index.js
 | `list_jfr_recordings` | Список активных JFR-записей процесса. Использовать перед `stop_profiling` для получения `recordingId`. |
 | `stop_profiling` | Остановка записи и сохранение в recordings/new_profile.jfr. Требует `pid` и `recordingId`. |
 | `check_deadlock` | Проверка Java-level deadlock. Возвращает JSON с потоками, блокировками и циклом. |
-| `analyze_threads` | Дамп потоков (jstack) со сводкой по deadlock. Параметры: `pid`, опционально `topN` (по умолчанию 10). |
-| `heap_histogram` | Гистограмма классов (GC.class_histogram). Параметры: `pid`, опционально `topN` (20), `all` (вызывает full GC — может приостановить приложение). |
-| `heap_dump` | Создание .hprof дампа кучи для MAT/VisualVM. Параметр: `pid`. Сохраняется в recordings/heap_dump.hprof. |
+| `analyze_threads` | Дамп потоков (jstack) со сводкой по deadlock. Параметры: `pid`, опционально `topN`, `structured` (JSON с цепочками ожидания). Live-снимок; история: `profile_jfr_locks`. |
+| `heap_histogram` | Гистограмма классов (GC.class_histogram). Параметры: `pid`, опционально `topN` (20), `all` (вызывает full GC). Статический снимок; для роста — `heap_live_histogram_diff`. |
+| `heap_live_histogram_diff` | Два снимка гистограммы с интервалом `intervalSeconds` (по умолчанию 5). Топ классов по росту экземпляров/байт. Первый шаг при подозрении на утечку. |
+| `heap_dump` | Создание .hprof для MAT/VisualVM. После `heap_live_histogram_diff` — Path to GC Roots в MAT. Параметр: `pid`. |
 | `heap_info` | Краткая сводка по куче. Параметр: `pid`. |
 | `vm_info` | Информация о JVM: uptime, version, flags. Параметр: `pid`. |
 | `trace_method` | Построение дерева вызовов метода из .jfr. Параметры: `className`, `methodName`. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
-| `parse_jfr_summary` | Разбор .jfr в сводку: топ методов, GC, аномалии. Опционально: `filepath` (по умолчанию new_profile), `events`, `topN`. |
-| `profile_memory` | Профиль по памяти: топ аллокаторов, GC, утечки. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
+| `parse_jfr_summary` | Разбор .jfr в сводку: топ методов, GC, аномалии. Опционально: `filepath`, `events`, `topN`. |
+| `profile_memory` | Профиль памяти: аллокаторы по байтам/счётчику, стеки, OldObjectSample по классам. Опционально: `filepath`, `topN`, `sortBy`. См. `gc_efficiency`, `heap_live_histogram_diff`. |
+| `gc_efficiency` | Эффективность GC из .jfr: пауза vs освобождённые байты. Опционально: `filepath`, `topN`. После `stop_profiling`. |
 | `profile_time` | Профиль по времени (узкие места CPU). Опционально: `filepath` (по умолчанию new_profile), `topN`. |
 | `profile_frequency` | Профиль по частоте вызовов. Опционально: `filepath` (по умолчанию new_profile), `topN`. |
 
@@ -209,7 +211,17 @@ npx @modelcontextprotocol/inspector node dist/index.js
 3. Подождать `duration` секунд
 4. **Проверить записи** (опционально) → `list_jfr_recordings` для получения `recordingId`
 5. **Остановка и сохранение** → `stop_profiling` с `pid` и `recordingId`
-6. **Анализ** → `parse_jfr_summary`, `profile_memory`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, `profile_jfr_native` (в записи должны быть нужные типы событий — см. `start_profiling`: `preset` или `settingsFile` с `.jfc`)
+6. **Анализ** → `parse_jfr_summary`, `profile_memory`, `gc_efficiency`, `profile_time`, `profile_frequency`, `trace_method`, `profile_jfr_network`, `profile_jfr_file_io`, `profile_jfr_locks`, `profile_jfr_native` (в записи должны быть нужные типы событий — см. `start_profiling`: `preset` или `settingsFile` с `.jfc`)
+
+## Пример: гипотеза об утечке памяти
+
+1. **Список процессов** → `list_java_processes`
+2. **Растущие классы** → `heap_live_histogram_diff` с `pid`, `intervalSeconds: 5`
+3. **Запись под нагрузкой** → `start_profiling` → ожидание → `stop_profiling`
+4. **Профиль аллокаций** → `profile_memory` (`oldObjectSamplesByClass` для подозрительного класса)
+5. **Давление GC** → `gc_efficiency` на том же `.jfr`
+6. **Подтверждение удержания** → `heap_dump` → Eclipse MAT → Path to GC Roots (исключить weak/soft)
+7. AI формирует связную гипотезу (отдельного tool нет)
 
 ## Удалённая JVM и stdio MCP
 

@@ -36,7 +36,15 @@ export async function heapDump(input: HeapDumpInput): Promise<string> {
       filepath: HEAP_DUMP_PATH,
       fileSize: stats.size,
       status: "saved",
-      hint: "Open in Eclipse MAT, VisualVM, or JProfiler for analysis. File can be large (hundreds of MB - GB).",
+      hint: "Open in Eclipse MAT, VisualVM, or JProfiler. File can be large (hundreds of MB - GB).",
+      matPathToGcRoots: [
+        "Use heap_live_histogram_diff to pick a growing class name first.",
+        "In Eclipse MAT: Histogram → right-click class → Path to GC Roots → exclude weak/soft references.",
+        "This confirms retention chains; profile_memory OldObjectSample only shows allocation sites.",
+      ],
+      nextSteps: [
+        "After identifying a suspect class via heap_live_histogram_diff, inspect its dominator/path-to-roots in MAT.",
+      ],
     },
     null,
     2
