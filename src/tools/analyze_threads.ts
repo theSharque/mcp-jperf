@@ -72,7 +72,7 @@ function parseLockWaitChain(section: string): LockWaitChain | undefined {
 
 export async function analyzeThreads(input: AnalyzeThreadsInput): Promise<string> {
   const { pid, topN, structured } = input;
-  const output = runJcmd(pid, "Thread.print -l");
+  const output = runJcmd(pid, "Thread.print", ["-l"]);
 
   const deadlockMatch = output.match(/Found (\d+) Java-level deadlock(s)?/);
   const deadlockCount = deadlockMatch ? parseInt(deadlockMatch[1], 10) : 0;

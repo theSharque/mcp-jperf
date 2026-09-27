@@ -79,7 +79,7 @@ function buildCycle(threads: DeadlockThread[]): string[] {
 
 export async function checkDeadlock(input: CheckDeadlockInput): Promise<string> {
   const { pid } = input;
-  const output = runJcmd(pid, "Thread.print -l");
+  const output = runJcmd(pid, "Thread.print", ["-l"]);
 
   const { count, cycles } = parseDeadlocks(output);
 

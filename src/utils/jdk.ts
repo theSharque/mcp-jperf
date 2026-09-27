@@ -1,4 +1,4 @@
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -49,7 +49,7 @@ function jdkCmd(name: string): string {
 export function runJps(): JavaProcess[] {
   try {
     const jpsPath = jdkCmd("jps");
-    const output = execSync(`"${jpsPath}" -l -m`, { encoding: "utf-8" });
+    const output = execFileSync(jpsPath, ["-l", "-m"], { encoding: "utf-8" });
     return parseJpsOutput(output);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -92,8 +92,11 @@ function parseJpsOutput(output: string): JavaProcess[] {
 export function runJcmd(pid: number, command: string, options?: string[]): string {
   try {
     const jcmdPath = jdkCmd("jcmd");
-    const args = [String(pid), command, ...(options ?? [])];
-    const output = execSync(`"${jcmdPath}" ${args.join(" ")}`, { encoding: "utf-8" });
+    const output = execFileSync(
+      jcmdPath,
+      [String(pid), command, ...(options ?? [])],
+      { encoding: "utf-8" }
+    );
     return output;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
