@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 - 2026-11-24
+
+### Security
+
+- Refresh transitive dependencies (`npm audit fix`).
+
 ## 1.4.2 - 2026-09-27
 
 ### Security
