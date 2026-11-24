@@ -32,6 +32,20 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         continue-on-error: true
 
+      - name: Wait until npm has this version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          for i in $(seq 1 30); do
+            if npm view "javaperf@${VERSION}" version >/dev/null 2>&1; then
+              echo "npm has javaperf@${VERSION}"
+              exit 0
+            fi
+            echo "waiting for javaperf@${VERSION} (${i}/30)"
+            sleep 10
+          done
+          echo "timeout waiting for javaperf@${VERSION} on npm"
+          exit 1
+
       - name: Install mcp-publisher
         run: |
           curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
